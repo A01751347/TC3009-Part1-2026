@@ -1,0 +1,22 @@
+# Versiones exactas, a proposito.
+#
+# Un rango abierto (>=, ~=) significa que tu maquina, la de tu companero y el
+# servidor pueden instalar versiones distintas. Cuando eso pasa con scikit-learn,
+# el modelo que exportaste deja de cargar y el error no dice por que.
+#
+# Esto no es burocracia: es la diferencia entre "funciona en mi maquina" y
+# "funciona".
+
+Flask==3.0.3
+Flask-Cors==4.0.1
+pandas==2.2.2
+numpy==1.26.4
+
+# Se usan a partir de la sesion 2, pero se fijan desde ahora: la version de
+# scikit-learn con la que entrenas tiene que ser la misma con la que sirves.
+scikit-learn==1.5.2
+joblib==1.4.2
+
+# Servidor de produccion, se usa dentro del contenedor en la sesion 4.
+# El servidor de desarrollo de Flask no esta hecho para produccion.
+gunicorn==22.0.0

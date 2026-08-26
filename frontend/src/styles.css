@@ -1,0 +1,215 @@
+/* Paleta del tablero.
+   Un solo modo (claro), declarado explicitamente. Los valores salen de una
+   paleta validada: el azul de las barras pasa 3:1 contra la superficie, y el
+   azul claro del estado "no seleccionado" es el paso mas claro que sigue
+   despegado del fondo. */
+:root {
+  --plano: #f9f9f7;
+  --superficie: #fcfcfb;
+  --tinta: #0b0b0b;
+  --tinta-2: #52514e;
+  --tinta-apagada: #898781;
+  --linea: #e1e0d9;
+  --eje: #c3c2b7;
+  --borde: rgba(11, 11, 11, 0.1);
+  --serie: #2a78d6;
+  --serie-apagada: #86b6ef;
+
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--plano);
+  color: var(--tinta);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+}
+
+header h1 {
+  font-size: 24px;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+
+header p {
+  margin: 0 0 28px;
+  color: var(--tinta-2);
+}
+
+/* --- Barra de filtros: una sola fila, arriba de las graficas --- */
+.filtros {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.filtros label {
+  font-size: 13px;
+  color: var(--tinta-2);
+}
+
+.filtros select {
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 12px;
+  border: 1px solid var(--eje);
+  border-radius: 8px;
+  background: var(--superficie);
+  color: var(--tinta);
+  min-width: 190px;
+}
+
+.filtros button {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+  border: 1px solid var(--eje);
+  border-radius: 8px;
+  background: var(--superficie);
+  color: var(--tinta-2);
+  cursor: pointer;
+}
+
+.filtros button:hover {
+  color: var(--tinta);
+}
+
+/* --- Tarjetas de cifras: numeros protagonistas, no una grafica --- */
+.tarjetas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.tarjeta {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.tarjeta .etiqueta {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tinta-apagada);
+  margin-bottom: 6px;
+}
+
+.tarjeta .valor {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* --- Paneles de grafica --- */
+.panel {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.panel h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 2px;
+}
+
+.panel .subtitulo {
+  font-size: 13px;
+  color: var(--tinta-2);
+  margin: 0 0 18px;
+}
+
+.scroll-x {
+  overflow-x: auto;
+}
+
+/* --- Tabla --- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: right;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--linea);
+  white-space: nowrap;
+}
+
+th:first-child,
+td:first-child,
+th.txt,
+td.txt {
+  text-align: left;
+}
+
+thead th {
+  color: var(--tinta-apagada);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* --- Estados --- */
+.estado {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--tinta-2);
+}
+
+.estado.error {
+  color: #d03b3b;
+}
+
+.vacio {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--tinta-apagada);
+  font-size: 14px;
+}
+
+/* --- Tooltip de las graficas --- */
+.tooltip {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(11, 11, 11, 0.08);
+}
+
+.tooltip .t-titulo {
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.tooltip .t-linea {
+  color: var(--tinta-2);
+}

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Base de datos local de predicciones (se crea en la sesion 3)
+*.sqlite
+*.sqlite3
+*.db
+
+# Entorno
+.env
+.env.local
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# NOTA: artifacts/ SI se versiona.
+# El pipeline.joblib y el metadata.json son parte del producto, no basura
+# generada. Sin ellos el servicio no arranca.
+.run/

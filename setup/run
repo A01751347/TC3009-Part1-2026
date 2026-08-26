@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+#
+# Comandos del modulo.
+#
+# La consola del navegador es UNA SOLA, y los servidores ocupan la terminal
+# mientras corren. Por eso 'start' los levanta en segundo plano y te devuelve
+# el prompt: con una consola alcanza para todo.
+#
+#   ./setup/run start        levanta la API y el tablero en segundo plano
+#   ./setup/run stop         los detiene
+#   ./setup/run restart      stop + start  (lo que usas despues de cada sync)
+#   ./setup/run status       que esta corriendo y en que puerto
+#   ./setup/run logs         ultimas lineas de los dos registros
+#   ./setup/run logs api     sigue el registro de la API en vivo
+#   ./setup/run sync         trae los cambios que empujaste desde tu laptop
+#   ./setup/run url          en que direccion esta tu tablero
+#   ./setup/run doctor       revisa el entorno y dice que falta
+#
+#   ./setup/run api          arranca la API en PRIMER plano (para depurar)
+#   ./setup/run web          arranca el tablero en PRIMER plano (para depurar)
+#
+# No hace falta activar el entorno virtual: este script llama a
+# .venv/bin/python directamente. Activarlo tampoco estorba, pero no es
+# necesario y una activacion olvidada es una fuente de confusion menos.
+
+set -uo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUN_DIR="$REPO_DIR/.run"
+mkdir -p "$RUN_DIR"
+
+VERDE="\033[32m"; AMARILLO="\033[33m"; ROJO="\033[31m"; RESET="\033[0m"
+ok()    { echo -e "  ${VERDE}OK${RESET}    $1"; }
+aviso() { echo -e "  ${AMARILLO}AVISO${RESET} $1"; }
+mal()   { echo -e "  ${ROJO}FALLA${RESET} $1"; }
+
+# nvm es una funcion de shell, no un binario: hay que cargarla.
+# set +u porque nvm.sh referencia variables sin definir y abortaria el script.
+cargar_nvm() {
+  set +u
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  # shellcheck source=/dev/null
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  set -u
+}
+
+ip_publica() {
+  local token ip
+  token=$(curl -sX PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 60" --max-time 3 2>/dev/null || true)
+  ip=$(curl -s -H "X-aws-ec2-metadata-token: $token" --max-time 3 \
+    http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || true)
+  echo "$ip"
+}
+
+vive() {  # vive <servicio>  -> 0 si el proceso sigue corriendo
+  local pid_file="$RUN_DIR/$1.pid"
+  [[ -f "$pid_file" ]] || return 1
+  local pid
+  pid="$(cat "$pid_file" 2>/dev/null)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+# Puerto de cada servicio, para poder limpiar procesos huerfanos.
+puerto_de() { case "$1" in api) echo 8080 ;; web) echo 3000 ;; *) echo "" ;; esac; }
+
+# setsid le da al proceso su propio grupo, para poder matar tambien a sus
+# hijos: Flask en modo debug y Vite lanzan subprocesos, y sin eso quedarian
+# ocupando el puerto con el sintoma "Address already in use".
+# No existe en macOS, asi que se usa si esta y si no se sigue sin el; el
+# 'stop' limpia por puerto de todas formas.
+arrancar() {  # arrancar <servicio> <comando...>
+  local servicio="$1"; shift
+  if vive "$servicio"; then
+    aviso "$servicio ya estaba corriendo (pid $(cat "$RUN_DIR/$servicio.pid"))"
+    return 0
+  fi
+  if command -v setsid >/dev/null 2>&1; then
+    setsid nohup "$@" > "$RUN_DIR/$servicio.log" 2>&1 &
+  else
+    nohup "$@" > "$RUN_DIR/$servicio.log" 2>&1 &
+  fi
+  echo $! > "$RUN_DIR/$servicio.pid"
+  sleep 2
+  if vive "$servicio"; then
+    ok "$servicio arrancado (pid $(cat "$RUN_DIR/$servicio.pid"))"
+  else
+    mal "$servicio no arranco. Revisa:  ./setup/run logs $servicio"
+    return 1
+  fi
+}
+
+detener() {  # detener <servicio>
+  local servicio="$1"
+  local pid_file="$RUN_DIR/$servicio.pid"
+  local algo=0
+
+  if [[ -f "$pid_file" ]]; then
+    local pid
+    pid="$(cat "$pid_file" 2>/dev/null)"
+    if [[ -n "$pid" ]]; then
+      # Primero el grupo completo (si setsid lo creo), luego el proceso solo.
+      kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+      sleep 1
+      kill -KILL -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+      algo=1
+    fi
+    rm -f "$pid_file"
+  fi
+
+  # Barrido por puerto: atrapa a los hijos que sobrevivieron al padre.
+  local puerto huerfanos
+  puerto="$(puerto_de "$servicio")"
+  if [[ -n "$puerto" ]] && command -v lsof >/dev/null 2>&1; then
+    huerfanos="$(lsof -ti:"$puerto" 2>/dev/null || true)"
+    if [[ -n "$huerfanos" ]]; then
+      echo "$huerfanos" | xargs kill -KILL 2>/dev/null || true
+      algo=1
+    fi
+  fi
+
+  (( algo )) && ok "$servicio detenido" || echo "  $servicio no estaba corriendo"
+}
+
+exigir_entorno() {
+  if [[ ! -x "$REPO_DIR/.venv/bin/python" ]]; then
+    mal "no existe el entorno virtual. Corre:  bash setup/bootstrap-ec2.sh"
+    exit 1
+  fi
+}
+
+case "${1:-}" in
+
+  start)
+    exigir_entorno
+    arrancar api "$REPO_DIR/.venv/bin/python" "$REPO_DIR/backend/app.py"
+    cargar_nvm
+    if ! command -v npm >/dev/null 2>&1; then
+      mal "npm no disponible. Corre:  bash setup/bootstrap-ec2.sh"
+      exit 1
+    fi
+    arrancar web bash -c \
+      "export NVM_DIR=\"\$HOME/.nvm\"; [ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"; cd '$REPO_DIR/frontend' && npm run dev"
+    echo
+    ip="$(ip_publica)"
+    if [[ -n "$ip" ]]; then
+      echo "  Tablero: http://$ip:3000"
+      echo "  API:     http://$ip:8080/api/health"
+    fi
+    echo
+    echo "  Tu terminal quedo libre. Si algo no responde:  ./setup/run logs"
+    ;;
+
+  stop)
+    detener web
+    detener api
+    ;;
+
+  restart)
+    "$0" stop
+    echo
+    "$0" start
+    ;;
+
+  status)
+    echo
+    for s in api web; do
+      if vive "$s"; then
+        ok "$s corriendo (pid $(cat "$RUN_DIR/$s.pid"))"
+      else
+        echo "  --    $s detenido"
+      fi
+    done
+    echo
+    curl -s -m 2 -o /dev/null -w "  API  :8080 -> %{http_code}\n" localhost:8080/api/health \
+      || echo "  API  :8080 -> sin respuesta"
+    curl -s -m 2 -o /dev/null -w "  Web  :3000 -> %{http_code}\n" localhost:3000 \
+      || echo "  Web  :3000 -> sin respuesta"
+    echo
+    ;;
+
+  logs)
+    servicio="${2:-}"
+    if [[ -n "$servicio" ]]; then
+      [[ -f "$RUN_DIR/$servicio.log" ]] || { mal "no hay registro de '$servicio'"; exit 1; }
+      echo "Siguiendo $servicio. Ctrl+C para salir."
+      exec tail -f "$RUN_DIR/$servicio.log"
+    fi
+    for s in api web; do
+      echo "===== $s ====="
+      [[ -f "$RUN_DIR/$s.log" ]] && tail -n 15 "$RUN_DIR/$s.log" || echo "(sin registro)"
+      echo
+    done
+    ;;
+
+  api)
+    exigir_entorno
+    echo "API en el puerto 8080, en primer plano. Ctrl+C para detener."
+    exec "$REPO_DIR/.venv/bin/python" "$REPO_DIR/backend/app.py"
+    ;;
+
+  web)
+    cargar_nvm
+    command -v npm >/dev/null 2>&1 || { mal "npm no disponible. Corre: bash setup/bootstrap-ec2.sh"; exit 1; }
+    [[ -d "$REPO_DIR/frontend/node_modules" ]] \
+      || { mal "faltan dependencias del frontend. Corre: bash setup/bootstrap-ec2.sh"; exit 1; }
+    echo "Tablero en el puerto 3000, en primer plano. Ctrl+C para detener."
+    cd "$REPO_DIR/frontend" && exec npm run dev
+    ;;
+
+  sync)
+    cd "$REPO_DIR" && git pull
+    echo
+    echo "  Para que los cambios se vean:  ./setup/run restart"
+    ;;
+
+  url)
+    ip="$(ip_publica)"
+    [[ -n "$ip" ]] || { mal "no se pudo obtener la IP publica de la instancia"; exit 1; }
+    echo "  Tablero: http://$ip:3000"
+    echo "  API:     http://$ip:8080/api/health"
+    ;;
+
+  doctor)
+    echo
+    echo "Revisando el entorno del modulo"
+    echo "==============================================="
+    echo "  proyecto : $REPO_DIR"
+    echo "  usuario  : $(whoami)"
+    echo "  HOME     : $HOME"
+    echo
+
+    command -v git >/dev/null 2>&1 && ok "git $(git --version | awk '{print $3}')" || mal "git no encontrado"
+    command -v python3 >/dev/null 2>&1 && ok "$(python3 --version)" || mal "python3 no encontrado"
+
+    if [[ -x "$REPO_DIR/.venv/bin/python" ]]; then
+      ok "entorno virtual en .venv/  (no hace falta activarlo)"
+      if "$REPO_DIR/.venv/bin/python" -c "import flask, pandas, sklearn" 2>/dev/null; then
+        ok "bibliotecas de Python instaladas"
+      else
+        mal "faltan bibliotecas. Corre: bash setup/bootstrap-ec2.sh"
+      fi
+    else
+      mal "no existe .venv/. Corre: bash setup/bootstrap-ec2.sh"
+    fi
+
+    cargar_nvm
+    if command -v node >/dev/null 2>&1; then
+      ok "node $(node --version)"
+    else
+      mal "node no disponible ni tras cargar nvm. Corre: bash setup/bootstrap-ec2.sh"
+    fi
+
+    [[ -d "$REPO_DIR/frontend/node_modules" ]] \
+      && ok "dependencias del frontend instaladas" \
+      || mal "falta frontend/node_modules. Corre: bash setup/bootstrap-ec2.sh"
+
+    remoto="$(cd "$REPO_DIR" && git remote get-url origin 2>/dev/null || echo '?')"
+    if [[ "$remoto" == *"vsosahdz/TC3009-Part1-2026"* ]]; then
+      aviso "tu remoto apunta al repositorio del CURSO, no a tu fork:"
+      echo "        $remoto"
+      echo "        Vas a poder trabajar, pero el git push final va a fallar."
+    else
+      ok "remoto: $remoto"
+    fi
+
+    ip="$(ip_publica)"
+    [[ -n "$ip" ]] && ok "IP publica: $ip" || aviso "sin IP publica"
+
+    echo
+    for s in api web; do
+      vive "$s" && ok "$s corriendo" || echo "  --    $s detenido  (levantalo con: ./setup/run start)"
+    done
+    echo
+    ;;
+
+  *)
+    sed -n '3,25p' "${BASH_SOURCE[0]}" | sed 's|^# \{0,1\}||'
+    exit 1
+    ;;
+esac
