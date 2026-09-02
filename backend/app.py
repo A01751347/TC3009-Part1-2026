@@ -71,7 +71,7 @@ def health():
     return jsonify({"status": "ok", "api_version": API_VERSION})
 
 
-# @app.get("/api/stats")
+@app.get("/api/stats")
 def stats():
     """Agregados del dataset. Alimenta las graficas del tablero.
 
