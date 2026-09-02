@@ -40,6 +40,10 @@ DATA_PATH = os.environ.get(
 
 app = Flask(__name__)
 
+
+ORIGEN_DESARROLLO = re.compile(r"^http://[A-Za-z0-9.\-]+:3000$")
+CORS(app, origins=[ORIGEN_DESARROLLO])
+
 # CORS solo para desarrollo.
 #
 # El frontend corre en el puerto 3000 y el backend en el 8080: puertos distintos
