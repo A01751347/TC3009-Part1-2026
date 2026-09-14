@@ -91,11 +91,21 @@ def health():
     Cada modulo puede aportar informacion definiendo una funcion estado().
     Asi, cuando la sesion 2 agrega el modelo, este endpoint empieza a reportar
     la version del artefacto sin que haya que tocar este archivo.
+
+    Si el estado() de un modulo falla, se reporta ese modulo como roto y los
+    demas siguen respondiendo. Un chequeo de salud que se cae entero porque
+    una parte esta a medias no sirve para nada: justo cuando algo esta mal es
+    cuando necesitas que te diga QUE esta mal.
     """
     respuesta = {"status": "ok", "api_version": API_VERSION}
     for modulo in modulos:
-        if hasattr(modulo, "estado"):
+        if not hasattr(modulo, "estado"):
+            continue
+        try:
             respuesta.update(modulo.estado())
+        except Exception as e:  # noqa: BLE001
+            respuesta["status"] = "degradado"
+            respuesta.setdefault("modulos_con_falla", {})[modulo.__name__] = str(e)
     return jsonify(respuesta)
 
 
