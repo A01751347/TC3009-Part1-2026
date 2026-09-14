@@ -118,8 +118,8 @@ Y fíjate en `main.jsx`, que sí se sobreescribió. Es el único archivo del fro
 y cambia porque **nunca lo escribiste tú**: llegó hecho en la sesión 1. Es un ensamblador,
 igual que `backend/app.py`. Los ensambladores son del curso; tu código es tuyo.
 
-Si te queda un `frontend/src/App.jsx` de las sesiones anteriores, ya no se usa: su contenido
-—el tablero— vive ahora en `frontend/src/vistas/Tablero.jsx`. Puedes borrarlo.
+Si en `frontend/src/` te queda un `App.jsx` de las sesiones anteriores, ya no se usa: su
+contenido —el tablero— vive ahora en `frontend/src/vistas/Tablero.jsx`. Puedes borrarlo.
 
 Ahora arranca lo que ya funciona:
 
