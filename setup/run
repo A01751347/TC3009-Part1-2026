@@ -18,6 +18,7 @@
 #                            agrega --si para no preguntar
 #   ./setup/run url          en que direccion esta tu tablero
 #   ./setup/run doctor       revisa el entorno y dice que falta
+#   ./setup/run test         corre el test de paridad notebook <-> servicio
 #
 #   ./setup/run api          arranca la API en PRIMER plano (para depurar)
 #   ./setup/run web          arranca el tablero en PRIMER plano (para depurar)
@@ -368,6 +369,32 @@ case "${1:-}" in
     echo "      git push --force"
     echo "  Y para levantar la aplicacion:"
     echo "      ./setup/run start"
+    ;;
+
+  test)
+    # Corre las pruebas del proyecto.
+    #
+    # Existe por la misma razon que el resto de los comandos: invocar
+    # .venv/bin/python a mano depende de en que carpeta estes parado, y el
+    # error que da --"No such file or directory"-- no dice eso.
+    exigir_entorno
+    cd "$REPO_DIR"
+
+    cual="${2:-paridad}"
+    archivo="$REPO_DIR/tests/test_${cual}.py"
+
+    if [[ ! -f "$archivo" ]]; then
+      mal "no existe tests/test_${cual}.py"
+      echo "        Disponibles:"
+      for f in "$REPO_DIR"/tests/test_*.py; do
+        [[ -e "$f" ]] || continue
+        n="$(basename "$f" .py)"; n="${n#test_}"
+        echo "            ./setup/run test $n"
+      done
+      exit 1
+    fi
+
+    exec "$REPO_DIR/.venv/bin/python" "$archivo"
     ;;
 
   url)

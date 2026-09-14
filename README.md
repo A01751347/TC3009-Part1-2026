@@ -99,6 +99,7 @@ La sesión 2 es la más importante del módulo. Si vas a faltar a una, que no se
 ./setup/run recuperar 1    # te deja como al cerrar la sesión 1
 ./setup/run url       # en qué dirección está tu tablero
 ./setup/run doctor    # revisa el entorno y dice qué falta
+./setup/run test      # corre el test de paridad notebook ↔ servicio
 ```
 
 **La consola del navegador es una sola.** Por eso `start` deja los servidores en

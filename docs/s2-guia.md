@@ -615,7 +615,7 @@ Un solo test, y es el único de este módulo que no se puede recortar.
 **En la instancia:**
 
 ```bash
-.venv/bin/python tests/test_paridad.py
+./setup/run test
 ```
 
 ```
@@ -638,6 +638,10 @@ te dice cuál:
 
 **Rómpelo a propósito**, para ver que sirve. Cambia un número en `example.json`, empuja,
 `sync`, y córrelo otra vez. Debe fallar. Luego revierte.
+
+> Como todo en este módulo, se invoca con `./setup/run` y desde donde sea. Llamar a
+> `.venv/bin/python` a mano funciona sólo si estás parado en la raíz del proyecto, y cuando
+> no lo estás el error —`No such file or directory`— no dice eso.
 
 > Este test transfiere **igual** a tu reto de clasificación: compara la clase predicha y el
 > vector de probabilidades en lugar de un número. Es el mismo test con otro tipo de dato.
