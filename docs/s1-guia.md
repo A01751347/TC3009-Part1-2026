@@ -701,15 +701,14 @@ igual. Por eso hoy importaba el contrato: mañana cambia lo de adentro y el cont
 
 ## Si te quedaste atrás
 
-Desde tu laptop:
-
-**En la instancia:**
+**En tu computadora:**
 
 ```bash
-./setup/run recuperar 1
+./setup/run recuperar 1 --si
+git push --force
 ```
 
-Y desde tu computadora, `git push --force` para que tu fork quede igual.
+**Y en la instancia:** `./setup/run sync && ./setup/run restart`
 
 Te deja en el estado correcto al cierre de esta sesión. Sin vergüenza: es más rápido que
 depurar en vivo, y es para lo que existen los checkpoints.

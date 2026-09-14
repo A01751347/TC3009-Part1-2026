@@ -25,12 +25,31 @@ exportaste en la sesión 2 es exactamente el mismo al terminar hoy.
 
 ## Antes de empezar: ¿no estuviste en la sesión 2?
 
-**En la instancia:**
+**En tu computadora**, en la carpeta del proyecto:
 
 ```bash
 ./setup/run recuperar 2 --si
+git push --force
+```
+
+**Y luego en la instancia:**
+
+```bash
+./setup/run sync
 ./setup/run start
 ```
+
+> **Por qué en tu computadora y no en la instancia.** La instancia clonó por HTTPS y no tiene
+> credenciales de GitHub: **solo puede hacer `pull`**. Si recuperas ahí, la aplicación te queda
+> bien pero tu fork se queda atrás, y el siguiente `push` desde tu computadora te devuelve al
+> estado viejo. El flujo va en una sola dirección:
+>
+> ```
+>    Tu computadora  ─push──▶  tu fork  ─pull──▶  Tu instancia
+> ```
+>
+> Todo lo que cambie el código va del lado izquierdo. Si ya lo corriste en la instancia, no
+> pasa nada: hazlo también en tu computadora y `sync` en la instancia.
 
 Eso te deja con las sesiones 1 y 2 completas. Pero **falta tu artefacto**: el curso no
 manda `artifacts/pipeline.joblib`, porque cada quien genera el suyo (si el curso enviara
@@ -41,7 +60,9 @@ descarga el zip y descomprímelo en `artifacts/`. Son unos 10 minutos y se puede
 paralelo mientras sigues esta guía: el backend de hoy no arranca sin artefacto, así que
 hazlo antes de llegar a la marca de los 15 minutos.
 
-Después, `git push --force` desde tu computadora para que tu fork quede igual.
+El artefacto **no** se sube a tu fork desde la instancia: como todo lo demás, va de tu
+computadora a GitHub. Si lo generaste en Colab, descomprímelo en `artifacts/` **en tu
+computadora**, haz `git push`, y `./setup/run sync` en la instancia.
 
 ---
 
@@ -90,12 +111,35 @@ modelo de clasificación de tu reto, la página se actualiza sin que toques el f
 
 ## 0:08 — Traer el material de la sesión (7 min)
 
-**En la instancia:**
+**En tu computadora:**
 
 ```bash
-cd ~/TC3009-Part1-2026
 git add -A && git commit -m "cierre de la sesión 2"
 ./setup/run actualizar 3
+```
+
+> **Dónde se corre esto.** En tu computadora, no en la instancia. `actualizar` trae archivos
+> **con `TODO` por llenar**, y esos los editas en VS Code. Si los traes a la instancia, ahí es
+> donde quedan — y la instancia no puede hacer `push`, así que tu repositorio nunca los ve.
+>
+> ```
+>    Tu computadora  ─push──▶  tu fork  ─pull──▶  Tu instancia
+>       editas                              solo ejecuta
+> ```
+>
+> La regla, la misma de la sesión 1: **si cambia archivos, va en tu computadora.**
+
+Guarda y súbelo:
+
+```bash
+git add -A && git commit -m "material de la sesión 3"
+git push
+```
+
+**Y en la instancia:**
+
+```bash
+./setup/run sync
 ```
 
 Lo que llega:
@@ -121,7 +165,7 @@ igual que `backend/app.py`. Los ensambladores son del curso; tu código es tuyo.
 Si en `frontend/src/` te queda un `App.jsx` de las sesiones anteriores, ya no se usa: su
 contenido —el tablero— vive ahora en `frontend/src/vistas/Tablero.jsx`. Puedes borrarlo.
 
-Ahora arranca lo que ya funciona:
+Ahora arranca lo que ya funciona, **en la instancia**:
 
 ```bash
 ./setup/run start
@@ -754,8 +798,9 @@ Ese ciclo —pedir, registrar, consultar— es el producto. Lo demás es present
 Dijimos que el formulario sale del contrato. Vamos a comprobarlo, porque "sale del contrato"
 es fácil de decir y fácil de creer sin que sea cierto.
 
-**En la instancia**, edita `artifacts/metadata.json` y busca la entrada de `GrLivArea`. Cambia
-su `median` a `3000` y su `max` a `3500`. Luego:
+**En la instancia** —y esta vez sí en la instancia, a propósito: es un experimento que vas a
+deshacer y no quieres que llegue a tu repositorio— edita `artifacts/metadata.json`, busca la
+entrada de `GrLivArea` y cambia su `median` a `3000` y su `max` a `3500`. Luego:
 
 ```bash
 ./setup/run restart
@@ -876,9 +921,14 @@ tomamos el camino corto y qué lo reemplaza después.
 
 ## Si te quedaste atrás
 
+**En tu computadora:**
+
 ```bash
 ./setup/run recuperar 3 --si
+git push --force
 ```
+
+**Y en la instancia:** `./setup/run sync && ./setup/run restart`
 
 Te deja con la sesión 3 terminada. Compara contra lo tuyo antes de descartarlo: lo que
 escribiste a medias suele estar más cerca de lo que crees.

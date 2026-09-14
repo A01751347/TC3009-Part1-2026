@@ -25,14 +25,23 @@ necesitas tu instancia ya creada y aprovisionada.**
 
 ### Si ya tienes tu instancia funcionando
 
-**En la instancia:**
+**En tu computadora:**
 
 ```bash
-./setup/run recuperar 1
+./setup/run recuperar 1 --si
+git push --force
+```
+
+**Y en la instancia:**
+
+```bash
+./setup/run sync
 ./setup/run start
 ```
 
-Y desde tu computadora, `git push --force` para que tu fork quede igual.
+La instancia clonó por HTTPS y no tiene credenciales de GitHub: **solo puede hacer `pull`**.
+Por eso `recuperar` va en tu computadora — si lo corres allá, tu fork se queda atrás y el
+siguiente `push` te devuelve al estado viejo.
 
 Eso te deja con **la sesión 1 completa** —el tablero funcionando— y con el esqueleto de la
 sesión 2 listo para llenar. No tienes que reinstalar nada: las dependencias del modelo
@@ -84,11 +93,22 @@ La respuesta es una sola idea, y es la que se llevan hoy:
 
 El curso publicó los archivos de esta sesión. Tráelos **sin pisar tu código**:
 
-**En la instancia:**
+**En tu computadora:**
 
 ```bash
 ./setup/run actualizar 2
 ```
+
+> **Dónde se corre esto.** En tu computadora, no en la instancia. `actualizar` trae archivos
+> **con `TODO` por llenar**, y esos los editas en VS Code. Si los traes a la instancia, ahí es
+> donde quedan — y la instancia no puede hacer `push`, así que tu repositorio nunca los ve.
+>
+> ```
+>    Tu computadora  ─push──▶  tu fork  ─pull──▶  Tu instancia
+>       editas                              solo ejecuta
+> ```
+>
+> La regla, la misma de la sesión 1: **si cambia archivos, va en tu computadora.**
 
 > **Si eso falla porque hiciste fork antes de que existiera esta sesión**, tu copia de los
 > comandos es la vieja. Actualízala primero y vuelve a intentar:
@@ -120,11 +140,18 @@ archivos propios:
 `app.py` descubre los módulos solos y los registra. Por eso agregar una sesión nunca toca el
 código de la anterior.
 
-Instala lo que haga falta y guarda:
+Guarda y súbelo, **desde tu computadora**:
 
 ```bash
-bash setup/bootstrap-ec2.sh
 git add -A && git commit -m "material de la sesion 2"
+git push
+```
+
+Y en **la instancia**, tráelo e instala lo que haga falta:
+
+```bash
+./setup/run sync
+bash setup/bootstrap-ec2.sh
 ```
 
 ---
@@ -683,10 +710,9 @@ Pero lo de hoy es lo que te llevas al reto. **La costura es el módulo.**
 
 **En tu computadora:**
 
-**En la instancia:**
-
 ```bash
-./setup/run recuperar 2
+./setup/run recuperar 2 --si
+git push --force
 ```
 
-Y desde tu computadora, `git push --force` para que tu fork quede igual.
+**Y en la instancia:** `./setup/run sync && ./setup/run restart`
