@@ -99,7 +99,8 @@ La sesión 2 es la más importante del módulo. Si vas a faltar a una, que no se
 ./setup/run recuperar 1    # te deja como al cerrar la sesión 1
 ./setup/run url       # en qué dirección está tu tablero
 ./setup/run doctor    # revisa el entorno y dice qué falta
-./setup/run test      # corre el test de paridad notebook ↔ servicio
+./setup/run test      # corre todas las pruebas
+./setup/run test paridad   # solo una: notebook ↔ servicio
 ```
 
 **La consola del navegador es una sola.** Por eso `start` deja los servidores en
@@ -142,7 +143,7 @@ frontend/         el tablero en React + Vite
 notebooks/        entrenamiento y exportación del modelo (sesión 2)
 artifacts/        el modelo exportado y su contrato (sesión 2)
 data/             train.csv del dataset House Prices
-tests/            test_paridad.py, el único test que importa
+tests/            las pruebas: paridad del modelo, registro de predicciones
 setup/            aprovisionamiento de la instancia
 docs/             guías de sesión, contrato de API, material de apoyo
 template-clasificacion/   lo que te llevas al reto

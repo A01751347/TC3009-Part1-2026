@@ -125,10 +125,17 @@ Ahora arranca lo que ya funciona:
 ./setup/run status
 ```
 
-⚠ **La página va a salir en blanco.** Es lo esperado, y vamos a arreglarlo a la marca de los
-50 minutos. Las vistas nuevas importan funciones de `api.js` que todavía no existen. Abre la
-consola del navegador (F12) y léelo: dice exactamente qué falta. Guarda ese mensaje en la
-cabeza, porque es el error más común de todo el módulo.
+⚠ **La página va a salir en blanco.** Es lo esperado, y se arregla a la marca de los 50
+minutos. Abre la consola del navegador (F12):
+
+```
+The requested module '/src/api.js' does not provide an export named 'getHistory'
+```
+
+Las vistas nuevas importan funciones de `api.js` que todavía no escribes. Nota que el
+mensaje **dice exactamente qué falta y dónde** — no "algo salió mal". Guárdalo: una pantalla
+en blanco con la consola cerrada es el error más caro de todo el módulo, porque no tiene
+síntoma. Con la consola abierta tiene nombre y apellido.
 
 Mientras tanto, el backend sí responde:
 
@@ -410,15 +417,19 @@ El backend está listo. Ahora la parte visible.
 
 ## 0:50 — La costura: lo que le falta a `api.js` (8 min)
 
-Abre [frontend/src/api.js](../frontend/src/api.js). Al final está el `TODO 5`.
+Abre [frontend/src/api.js](../frontend/src/api.js).
 
-En la sesión 1 este archivo fue **la costura**: el único lugar del frontend que sabe que
-existe un backend. Sigue siéndolo, y hoy le faltan cuatro cosas. Dos de ellas son POST, y
-hasta ahora solo sabe hacer GET.
+Este archivo es **tuyo** desde la sesión 1 — por eso `actualizar 3` lo dejó intacto, y por eso
+hoy no te llega ningún esqueleto que llenar: le vas a **agregar** un bloque al final, debajo
+de `getData`.
+
+En la sesión 1 fue **la costura**: el único lugar del frontend que sabe que existe un backend.
+Sigue siéndolo, y hoy le faltan cuatro cosas. Dos de ellas son POST, y hasta ahora solo sabe
+hacer GET.
 
 ### `TODO 5` — el helper y las cuatro funciones
 
-Reemplaza el bloque del `TODO 5` por esto:
+Pega esto al final del archivo:
 
 ```javascript
 // --- Sesion 3 ---
@@ -557,15 +568,23 @@ campos vacíos — y eso no lo decidiste tú, lo decidió el dataset.
     setError(null);
     setResultado(null);
     setExplicacion(null);
+    setReferencia(null);
 
     try {
       const r = await predecir(valores);
       setResultado(r);
-      // La explicacion se pide DESPUES y por separado: si falla, el usuario
-      // se queda con su precio igual.
+
+      // Las dos peticiones de contexto van DESPUES y por separado: si
+      // cualquiera falla, el usuario se queda con su precio igual.
       explicar(valores, r.prediction)
         .then((e) => setExplicacion(e.explanation))
         .catch(() => setExplicacion(null));
+
+      // Un precio solo no dice nada. Al lado del promedio de su colonia --que
+      // es el mismo /api/stats de la sesion 1-- ya es una decision.
+      getStats(valores.Neighborhood)
+        .then((s) => setReferencia(s))
+        .catch(() => setReferencia(null));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -574,7 +593,17 @@ campos vacíos — y eso no lo decidiste tú, lo decidió el dataset.
   }
 ```
 
-Cuatro decisiones, y las cuatro se notan cuando faltan:
+Fíjate en la última llamada: **`getStats` es de la sesión 1.** No hubo que agregar nada al
+backend ni a la costura. Un precio solo no dice nada; el mismo precio al lado del promedio de
+su colonia ya es una decisión:
+
+> El promedio en **Blmngtn** es USD 194,871 sobre 17 casas vendidas — esta casa está **9%
+> abajo**.
+
+Eso es lo que significa que el módulo de la sesión 1 siga sirviendo: las piezas se combinan,
+no se reemplazan.
+
+Cuatro decisiones más, y las cuatro se notan cuando faltan:
 
 - **`preventDefault()`.** Sin esto el navegador recarga la página y pierdes todo. Es el error
   número uno con formularios en React.
@@ -584,10 +613,10 @@ Cuatro decisiones, y las cuatro se notan cuando faltan:
 - **Se limpia el resultado anterior.** Si no, mientras carga la nueva predicción el usuario
   está viendo el precio de la casa pasada. Un número viejo en pantalla es peor que ningún
   número.
-- **La explicación va por separado, y su `catch` no hace nada.** Es deliberado: si `/api/explain`
-  falla, el usuario se queda con su precio igual. Lo secundario no tumba lo principal. Si
-  hubieras puesto el `await` de la explicación dentro del `try` de arriba, un fallo en la
-  plantilla borraría un precio perfectamente bueno.
+- **Los `catch` del contexto no hacen nada.** Es deliberado: si `/api/explain` o `/api/stats`
+  fallan, el usuario se queda con su precio igual. Lo secundario no tumba lo principal. Si
+  hubieras puesto esos `await` dentro del `try` de arriba, un fallo en la plantilla borraría un
+  precio perfectamente bueno.
 
 ### `TODO 8` — los campos
 
@@ -768,6 +797,32 @@ entrenamiento sigue siendo 0.97 en pantalla.
 ---
 
 ## 1:55 — Cierre (5 min)
+
+Antes de guardar, corre las pruebas:
+
+```bash
+./setup/run test
+```
+
+Ahora son dos. La de la sesión 2 sigue comprobando que el notebook y el servicio predicen lo
+mismo. La nueva comprueba tres cosas del registro:
+
+```
+   12 validas + 5 rechazadas  ->  12 filas en el log
+
+   OK  cada prediccion exitosa dejo exactamente una fila
+   OK  cada prediction_id devuelto corresponde a una fila, y solo una
+   OK  ninguna peticion rechazada con 400 genero fila
+   OK  el historial viene de mas reciente a mas antiguo
+   OK  cada fila guarda el input completo (10 campos)
+   OK  un limite absurdo se acota en lugar de fallar
+```
+
+Son invariantes que **se rompen en silencio**: nada falla, nada avisa, y el día que alguien
+audite el historial los números no cuadran. Si un `400` dejara fila, cualquier métrica de uso
+estaría inflada. Si una predicción dejara dos, también.
+
+Ese es el tipo de cosa que conviene probar: no la que revienta, la que miente.
 
 Guarda todo:
 

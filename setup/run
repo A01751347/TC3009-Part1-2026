@@ -380,7 +380,24 @@ case "${1:-}" in
     exigir_entorno
     cd "$REPO_DIR"
 
-    cual="${2:-paridad}"
+    # Sin argumento corre TODAS las pruebas que tengas. Con nombre, solo esa:
+    #
+    #   ./setup/run test            todas
+    #   ./setup/run test paridad    solo la paridad notebook <-> servicio
+    #
+    # Que el comando sin argumento las corra todas importa: una prueba que
+    # llega en una sesion nueva y nadie invoca nunca es una prueba que no
+    # existe.
+    if [[ -z "${2:-}" ]]; then
+      salida_total=0
+      for f in "$REPO_DIR"/tests/test_*.py; do
+        [[ -e "$f" ]] || continue
+        "$REPO_DIR/.venv/bin/python" "$f" || salida_total=1
+      done
+      exit "$salida_total"
+    fi
+
+    cual="$2"
     archivo="$REPO_DIR/tests/test_${cual}.py"
 
     if [[ ! -f "$archivo" ]]; then
