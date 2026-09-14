@@ -1,25 +1,30 @@
 # Sesión 3 — El producto
 
-**Dos horas.** Hoy sale del `curl`.
+**Dos horas, todas de frontend.** Hoy sale del `curl`.
 
 Al terminar la sesión 2 tenías un modelo que responde bien a `/api/predict` — pero solo si
 sabes escribir JSON en una terminal. Eso no es un producto, es un endpoint. Hoy alguien que
-no sabe qué es un endpoint va a poder usar tu modelo, ver qué predijo, y entender por qué.
+no sabe qué es un endpoint va a poder usar tu modelo.
 
-La mayor parte de la sesión es **frontend**, y el modelo no se toca: el artefacto que
-exportaste en la sesión 2 es exactamente el mismo al terminar hoy.
+El backend **no se toca**: todo lo de hoy consume lo que ya escribiste. El modelo tampoco:
+el artefacto que exportaste en la sesión 2 es exactamente el mismo al terminar hoy.
 
 ```
    0:00  qué le falta a esto para ser un producto        8 min
    0:08  traer el material de la sesión                  7 min
-   0:15  el backend: memoria y palabras                 35 min
-   0:50  la costura: lo que le falta a api.js            8 min
-   0:58  el ensamblador del frontend                     7 min
-   1:05  el formulario que sale del contrato            30 min
-   1:35  el historial                                   12 min
-   1:47  la prueba que importa                           8 min
-   1:55  cierre                                          5 min
+   0:15  la costura: lo que le falta a api.js           15 min
+   0:30  el ensamblador del frontend                    10 min
+   0:40  el formulario que sale del contrato            40 min   ← el corazón
+   1:20  la Model Card, que ya viene hecha              10 min
+   1:30  la prueba que importa                          12 min
+   1:42  usarlo de verdad                               10 min
+   1:52  cierre                                          8 min
 ```
+
+> **Qué NO está hoy.** El historial de predicciones y la explicación en lenguaje natural
+> pasaron a la sesión 4, donde encajan mejor: ahí el almacenamiento es el tema. Hoy el
+> objetivo es uno solo y se cumple entero — **que tu modelo tenga una interfaz que alguien
+> pueda usar.**
 
 ---
 
@@ -68,26 +73,32 @@ computadora**, haz `git push`, y `./setup/run sync` en la instancia.
 
 ## 0:00 — Qué le falta a esto para ser un producto (8 min)
 
-Tu API de la sesión 2 sabe predecir. Preguntas que **no** sabe contestar:
+Tu API de la sesión 2 predice bien. Así se usa hoy:
 
-| Pregunta | ¿Por qué importa? |
-|---|---|
-| ¿Cuántas predicciones llevas hoy? | Sin esto no sabes si alguien lo está usando |
-| ¿Qué predijiste la semana pasada? | Sin esto no puedes auditar una decisión |
-| ¿Los datos que te llegan se parecen a los del entrenamiento? | Sin esto no detectas que el modelo se está quedando viejo |
-| ¿Por qué este precio y no otro? | Sin esto nadie va a confiar en el número |
-
-Las cuatro se contestan con **dos cosas que el servicio todavía no tiene**:
-
-```
-   MEMORIA    cada predicción queda registrada, y se puede consultar
-   PALABRAS   la predicción se explica, no solo se entrega
+```bash
+curl -s -X POST http://localhost:8080/api/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"GrLivArea":1144,"OverallQual":5,"YearBuilt":1963,"TotalBsmtSF":1144,
+       "GarageCars":1,"FullBath":1,"BedroomAbvGr":3,"LotArea":9204,
+       "Neighborhood":"NAmes","KitchenQual":"TA"}'
 ```
 
-Ninguna de las dos cambia el modelo. Las dos cambian el producto.
+Pregúntate quién puede hacer eso. Tiene que saber qué es un endpoint, qué es JSON, los diez
+nombres de campo **exactos**, y tener una terminal abierta. Un agente inmobiliario no va a
+hacerlo. Tu compañero de equipo tampoco, si no fue él quien escribió la API.
 
-Y encima va lo de hoy que más se nota: **una interfaz**. Un formulario para pedir el precio,
-una tabla con lo que se ha predicho, y una ficha del modelo.
+> Un modelo al que solo se llega con `curl` no está terminado. Está **disponible**, que no
+> es lo mismo.
+
+Hoy construyes lo que falta:
+
+```
+   Un formulario     para pedir el precio sin saber qué es un endpoint
+   Una Model Card    para justificar el modelo sin abrir el notebook
+```
+
+El formulario es la sesión entera. Y no va a tener los diez campos escritos a mano: **se
+construye solo, leyendo el contrato del modelo.** Esa es la idea que te llevas al reto.
 
 ### Una regla que no se rompe hoy
 
@@ -145,15 +156,17 @@ git push
 Lo que llega:
 
 ```
-    nuevo        backend/s3_producto.py              el módulo de hoy, con 4 TODO
     nuevo        frontend/src/vistas/Tablero.jsx     tu tablero, mudado de casa
     nuevo        frontend/src/vistas/Predecir.jsx    el formulario, con 3 TODO
-    nuevo        frontend/src/vistas/Historial.jsx   la tabla, con 2 TODO
     nuevo        frontend/src/vistas/ModelCard.jsx   completa, de regalo
     actualizado  frontend/src/main.jsx               ahora es un ensamblador
-    conservado   backend/s2_modelo.py  (ya lo tienes)
-    conservado   frontend/src/api.js   (ya lo tienes)
+    conservado   backend/s1_tablero.py  (ya lo tienes)
+    conservado   backend/s2_modelo.py   (ya lo tienes)
+    conservado   frontend/src/api.js    (ya lo tienes)
 ```
+
+Todo es frontend. **El backend no recibe ni una línea hoy** — y aun así vas a terminar con
+algo que no se parece en nada a lo que tenías. Esa es la sesión.
 
 Fíjate en las dos últimas líneas: **tu código de las sesiones 1 y 2 no se tocó.** Eso no es
 casualidad, está declarado en [setup/archivos-del-curso.txt](../setup/archivos-del-curso.txt).
@@ -172,11 +185,11 @@ Ahora arranca lo que ya funciona, **en la instancia**:
 ./setup/run status
 ```
 
-⚠ **La página va a salir en blanco.** Es lo esperado, y se arregla a la marca de los 50
-minutos. Abre la consola del navegador (F12):
+⚠ **La página va a salir en blanco.** Es lo esperado, y se arregla en el siguiente bloque.
+Abre la consola del navegador (F12):
 
 ```
-The requested module '/src/api.js' does not provide an export named 'getHistory'
+The requested module '/src/api.js' does not provide an export named 'getModel'
 ```
 
 Las vistas nuevas importan funciones de `api.js` que todavía no escribes. Nota que el
@@ -184,7 +197,7 @@ mensaje **dice exactamente qué falta y dónde** — no "algo salió mal". Guár
 en blanco con la consola cerrada es el error más caro de todo el módulo, porque no tiene
 síntoma. Con la consola abierta tiene nombre y apellido.
 
-Mientras tanto, el backend sí responde:
+Mientras tanto, el backend responde igual que ayer:
 
 ```bash
 curl -s http://localhost:8080/api/health
@@ -192,277 +205,14 @@ curl -s http://localhost:8080/api/health
 
 ```json
 {"api_version":"1.0.0","artifact_hash":"6ff94a85591c","model_version":"1.0.0",
- "sklearn_version":"1.5.2","status":"degradado",
- "modulos_con_falla":{"s3_producto":"no such table: predicciones"}}
+ "sklearn_version":"1.5.2","status":"ok"}
 ```
 
-`status` dice `degradado`, no `ok`, y te nombra el módulo roto. El chequeo de salud **no se
-cae entero** porque una parte esté a medias: justo cuando algo está mal es cuando necesitas
-que te diga *qué* está mal. Eso lo hace `app.py`, y es el tipo de decisión que vale la pena
-copiar en tu reto.
-
-Esa tabla que falta es tu primer TODO.
+`ok`, como debe ser: hoy no le tocaste nada.
 
 ---
 
-## 0:15 — El backend: memoria y palabras (35 min)
-
-Abre [backend/s3_producto.py](../backend/s3_producto.py).
-
-Antes de escribir nada, **lee el archivo completo**. Hay cuatro TODO, pero lo más importante
-del archivo ya está escrito, y es esto:
-
-```python
-@bp.after_app_request
-def registrar_si_fue_prediccion(respuesta):
-```
-
-Párate ahí un momento.
-
-### El gancho: agregar sin modificar
-
-Necesitamos que cada llamada a `/api/predict` quede guardada. Pero `/api/predict` lo
-escribiste **tú** en la sesión 2, en `s2_modelo.py`, y no queremos volver a abrir ese
-archivo: editarlo obligaría a fusionar cambios sobre código que ya es tuyo, y ahí es donde
-aparecen los conflictos.
-
-`@bp.after_app_request` deja mirar —y reaccionar a— **cualquier respuesta de la aplicación**,
-venga del módulo que venga:
-
-```python
-    if request.path != "/api/predict" or respuesta.status_code != 200:
-        return respuesta
-
-    try:
-        datos = respuesta.get_json()
-        registrar(
-            datos["prediction_id"],
-            datos["model_version"],
-            datos["prediction"],
-            request.get_json(silent=True) or {},
-        )
-    except Exception:  # noqa: BLE001
-        # Que falle el registro NO debe tumbar una prediccion que ya salio
-        # bien. El usuario ya tiene su numero; el log es cosa nuestra.
-        current_app.logger.exception("no se pudo registrar la prediccion")
-
-    return respuesta
-```
-
-Tres decisiones en doce líneas:
-
-1. **Un 400 no se registra.** Solo hay predicción cuando hubo predicción. Si registraras los
-   errores en la misma tabla, cualquier conteo que hagas después estaría mal.
-2. **Se guarda la petición, no solo la respuesta.** `request.get_json()` — el input completo.
-   Vuelvo a esto en un momento.
-3. **Si el registro truena, la predicción sobrevive.** El usuario ya tiene su número. Que tu
-   bitácora falle no es razón para devolverle un 500.
-
-La idea —*agregar comportamiento sin modificar lo que ya funciona*— la vas a reencontrar como
-middleware, interceptores o decoradores en casi cualquier framework. Es la que quieres copiar
-en tu reto.
-
-### `TODO 1` — la tabla
-
-```python
-def crear_esquema():
-    with conectar() as con:
-        con.execute(
-            """
-            CREATE TABLE IF NOT EXISTS predicciones (
-                prediction_id TEXT PRIMARY KEY,
-                creado_en     TEXT NOT NULL,
-                model_version TEXT NOT NULL,
-                prediccion    REAL NOT NULL,
-                entrada       TEXT NOT NULL
-            )
-            """
-        )
-```
-
-`IF NOT EXISTS` la hace idempotente: se llama en cada arranque y no pasa nada.
-
-La columna que importa es la última. **Se guarda el input completo, no solo el resultado.**
-
-Cuesta lo mismo hoy, y es la que hace posible, más adelante, comparar lo que el modelo está
-viendo contra lo que vio al entrenar. Eso es detección de *drift*, y sin los inputs no hay
-nada que comparar. Es la diferencia entre "el modelo lleva seis meses en producción" y "el
-modelo lleva seis meses en producción y sé que sigue sirviendo".
-
-⚠ Nota de producto: registrar entradas crudas tiene implicaciones de datos personales en un
-sistema real. Aquí son casas; en tu reto puede que no.
-
-### `TODO 2` — el INSERT
-
-```python
-def registrar(prediction_id, model_version, prediccion, entrada):
-    with conectar() as con:
-        con.execute(
-            "INSERT OR REPLACE INTO predicciones VALUES (?, ?, ?, ?, ?)",
-            (
-                prediction_id,
-                datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                model_version,
-                float(prediccion),
-                json.dumps(entrada, ensure_ascii=False),
-            ),
-        )
-```
-
-Tres detalles:
-
-- **Los `?` no son opcionales.** Armar el SQL con formato de cadena es inyección de SQL, y da
-  igual que esto sea un ejercicio: es el hábito lo que se está formando.
-- **La hora la pone el servidor, en UTC.** Nunca el cliente: el reloj del cliente puede estar
-  en otra zona, mal puesto, o mentir.
-- **`entrada` es un diccionario y la columna es TEXT.** `json.dumps` para entrar,
-  `json.loads` para salir.
-
-Reinicia y comprueba que la tabla ya existe:
-
-```bash
-./setup/run restart
-curl -s http://localhost:8080/api/health
-```
-
-Ahora `"status":"ok"` y aparece `"predicciones_registradas":0`.
-
-Predice algo y vuelve a mirar:
-
-```bash
-curl -s -X POST http://localhost:8080/api/predict \
-  -H 'Content-Type: application/json' \
-  -d '{"GrLivArea":1144,"OverallQual":5,"YearBuilt":1963,"TotalBsmtSF":1144,
-       "GarageCars":1,"FullBath":1,"BedroomAbvGr":3,"LotArea":9204,
-       "Neighborhood":"NAmes","KitchenQual":"TA"}'
-
-curl -s http://localhost:8080/api/health
-```
-
-`predicciones_registradas` pasó a 1, y **no tocaste `s2_modelo.py`**. Eso es el gancho
-funcionando.
-
-Prueba ahora con una entrada inválida y vuelve a contar: sigue en 1.
-
-### `TODO 3` — el historial
-
-```python
-@bp.get("/api/history")
-def history():
-    try:
-        limite = int(request.args.get("limit", 50))
-    except ValueError:
-        limite = 50
-    limite = max(1, min(limite, 500))
-
-    with conectar() as con:
-        filas = con.execute(
-            "SELECT * FROM predicciones ORDER BY creado_en DESC, rowid DESC LIMIT ?",
-            (limite,),
-        ).fetchall()
-
-    return jsonify(
-        {
-            "count": len(filas),
-            "rows": [
-                {
-                    "prediction_id": f["prediction_id"],
-                    "created_at": f["creado_en"],
-                    "model_version": f["model_version"],
-                    "prediction": round(f["prediccion"], 2),
-                    "input": json.loads(f["entrada"]),
-                }
-                for f in filas
-            ],
-        }
-    )
-```
-
-Dos cosas que no son decoración:
-
-- **`limite` se acota entre 1 y 500.** Nunca dejes que el cliente pida "todo". Hoy son cuatro
-  filas; el día que sean cuatro millones, ese `min()` es lo único que separa tu API de un
-  servidor caído.
-- **El orden desempata con `rowid`.** Dos predicciones en el mismo segundo tienen el mismo
-  `creado_en`, y sin el desempate el orden sería arbitrario entre ejecuciones.
-
-Y un detalle de diseño: el historial se llama `/api/history`, no `/api/predictions`. Es lo
-que el **producto** muestra, no la tabla que hay debajo. Si mañana el almacenamiento cambia a
-PostgreSQL —que es exactamente lo que pasa en la sesión 4— la URL no se entera.
-
-### `TODO 4` — la explicación
-
-```python
-def redactar(entrada, prediccion):
-    contrato = s2_modelo.contrato
-    importancias = contrato.get("feature_importances", {})
-    top = [f for f, _ in sorted(importancias.items(), key=lambda kv: -kv[1])[:3]]
-
-    partes = []
-    for nombre in top:
-        valor = entrada.get(nombre)
-        if valor is None:
-            continue
-        ficha = next((f for f in contrato["features"] if f["name"] == nombre), None)
-        if ficha and ficha["type"] == "num" and "median" in ficha:
-            mediana = ficha["median"]
-            if valor > mediana * 1.15:
-                partes.append(f"{nombre} por encima de lo habitual ({valor:g})")
-            elif valor < mediana * 0.85:
-                partes.append(f"{nombre} por debajo de lo habitual ({valor:g})")
-            else:
-                partes.append(f"{nombre} en el rango habitual ({valor:g})")
-        else:
-            partes.append(f"{nombre} = {valor}")
-
-    detalle = "; ".join(partes) if partes else "los datos proporcionados"
-    return (
-        f"El modelo estima {prediccion:,.0f} para esta casa. "
-        f"Lo que mas pesa en esa estimacion es {detalle}."
-    )
-```
-
-No hay ningún modelo de lenguaje aquí. Es una plantilla, y sale toda del contrato: las tres
-features que más pesan, comparadas contra la mediana que `metadata.json` ya traía.
-
-Mira el endpoint que ya está escrito, `/api/explain`. Lo importante es lo que **no** hace:
-
-```python
-    entrada = payload.get("input")
-    prediccion = payload.get("prediction")
-```
-
-**Recibe la predicción. No la recalcula.** Si esta función corriera el modelo por su cuenta,
-podría darte 140,637 mientras el usuario está viendo 140,638 en pantalla —por un redondeo, o
-porque entre una llamada y otra se recargó otro artefacto— y entonces la explicación
-contradice al producto. La regla del principio de la sesión, aplicada.
-
-En [docs/extras/gemini-explain.md](extras/gemini-explain.md) está documentado cómo cambiar
-esto por un modelo de lenguaje de verdad. Fíjate en que el cambio es **reemplazar esta sola
-función**: el contrato de `/api/explain` no se mueve.
-
-```bash
-./setup/run restart
-curl -s -X POST http://localhost:8080/api/explain \
-  -H 'Content-Type: application/json' \
-  -d '{"input":{"OverallQual":5,"GrLivArea":1144,"TotalBsmtSF":1144},"prediction":140637.5}'
-```
-
-```json
-{"explanation":"El modelo estima 140,638 para esta casa. Lo que mas pesa en esa estimacion
- es OverallQual por debajo de lo habitual (5); GrLivArea por debajo de lo habitual (1144);
- TotalBsmtSF por encima de lo habitual (1144).","source":"plantilla"}
-```
-
-Tres features, tres comparaciones contra la mediana del dataset. Nota que `TotalBsmtSF` con
-1144 sale "por encima" apenas: la mediana es 991.5 y el umbral está en 15% arriba. Esos
-cortes son una decisión tuya, no del modelo — y como son tuyos, se pueden explicar.
-
-El backend está listo. Ahora la parte visible.
-
----
-
-## 0:50 — La costura: lo que le falta a `api.js` (8 min)
+## 0:15 — La costura: lo que le falta a `api.js` (15 min)
 
 Abre [frontend/src/api.js](../frontend/src/api.js).
 
@@ -516,11 +266,27 @@ genérico, todo ese trabajo se pierde exactamente en el punto donde iba a servir
 propaga tal cual, y por eso el `.catch(() => ({}))`: si el backend se cayó de verdad y no
 devolvió JSON, `datos` queda vacío y cae al mensaje genérico en lugar de reventar.
 
+### Dos de esas cuatro todavía no tienen a quién llamar
+
+`explicar` y `getHistory` apuntan a `/api/explain` y `/api/history`, que **no existen**: son
+el material de la sesión 4. Las escribes hoy a propósito, y hoy no se usan las dos:
+
+| función | endpoint | ¿existe hoy? |
+|---|---|---|
+| `getModel` | `/api/model` | sí, sesión 2 |
+| `predecir` | `/api/predict` | sí, sesión 2 |
+| `explicar` | `/api/explain` | **no**, sesión 4 |
+| `getHistory` | `/api/history` | **no**, sesión 4 |
+
+El formulario que vas a escribir va a pedir la explicación de todas formas, y no va a pasar
+nada: el precio se muestra igual. Vuelvo a esto cuando lo veas ocurrir, porque es una de las
+decisiones de diseño que más se llevan al reto.
+
 Guarda. **La página ya no está en blanco.**
 
 ---
 
-## 0:58 — El ensamblador del frontend (7 min)
+## 0:30 — El ensamblador del frontend (10 min)
 
 Abre [frontend/src/main.jsx](../frontend/src/main.jsx). Es corto, y no lo vas a editar hoy ni
 nunca.
@@ -569,7 +335,7 @@ Abre `http://TU-IP:3000`. Cuatro pestañas. Dos funcionan, dos son tu trabajo de
 
 ---
 
-## 1:05 — El formulario que sale del contrato (30 min)
+## 0:40 — El formulario que sale del contrato (40 min)
 
 Abre [frontend/src/vistas/Predecir.jsx](../frontend/src/vistas/Predecir.jsx).
 
@@ -660,10 +426,18 @@ Cuatro decisiones más, y las cuatro se notan cuando faltan:
 - **Se limpia el resultado anterior.** Si no, mientras carga la nueva predicción el usuario
   está viendo el precio de la casa pasada. Un número viejo en pantalla es peor que ningún
   número.
-- **Los `catch` del contexto no hacen nada.** Es deliberado: si `/api/explain` o `/api/stats`
-  fallan, el usuario se queda con su precio igual. Lo secundario no tumba lo principal. Si
-  hubieras puesto esos `await` dentro del `try` de arriba, un fallo en la plantilla borraría un
-  precio perfectamente bueno.
+- **Los `catch` del contexto no hacen nada.** Es deliberado, y hoy lo vas a ver funcionar de
+  verdad: `/api/explain` **no existe todavía** —llega en la sesión 4— así que esa llamada va a
+  fallar cada vez que pidas un precio. Y no pasa nada. El precio aparece, la referencia de la
+  colonia aparece, y la explicación simplemente no está.
+
+  Eso no es suerte. Si hubieras puesto ese `await` dentro del `try` de arriba, un endpoint que
+  ni siquiera existe estaría borrando un precio perfectamente bueno.
+
+  > **Lo secundario no tumba lo principal.** Escríbelo en tu reto antes de necesitarlo.
+
+  Ábrelo en la consola del navegador después de estimar un precio: vas a ver el `404` de
+  `/api/explain`, y la pantalla intacta.
 
 ### `TODO 8` — los campos
 
@@ -722,78 +496,64 @@ no, el problema es CORS o la URL — no tu lógica.
 
 ---
 
-## 1:35 — El historial (12 min)
+## 1:20 — La Model Card, que ya viene hecha (10 min)
 
-Abre [frontend/src/vistas/Historial.jsx](../frontend/src/vistas/Historial.jsx).
+Abre [frontend/src/vistas/ModelCard.jsx](../frontend/src/vistas/ModelCard.jsx) y la pestaña
+**Model Card** en el navegador, lado a lado.
 
-### `TODO 9` — pedir los datos
+No hay nada que escribir aquí. El ejercicio es **leerla**, porque es la vista que más te va a
+servir en el reto y casi nadie la abre por su cuenta.
+
+Seis paneles, y cada uno lleva escrito a qué renglón de la rúbrica responde:
+
+| Panel | Rúbrica |
+|---|---|
+| Qué modelo es | configura y entrena el modelo |
+| Con cuántos datos | separa en entrenamiento, validación y prueba |
+| Qué tan bien predice | selecciona medidas de desempeño adecuadas |
+| Qué pesa en la predicción | interpreta los resultados del modelo |
+| Modelos comparados | selecciona el modelo adecuado al problema |
+| Experimentos de hiperparámetros | ajusta los hiperparámetros |
+
+**Ni un solo valor está escrito a mano.** Todos salen de `/api/model`, que a su vez sale de
+`metadata.json`, que a su vez lo escribió tu notebook. Busca en el código dónde está el
+número `0.9024` que ves en pantalla. No está:
 
 ```javascript
-  useEffect(() => {
-    getHistory(50).then(setDatos).catch((e) => setError(e.message));
-  }, []);
+{metricas.map(([nombre, m]) => (
+  <tr key={nombre}>
+    <td className="txt">{nombre}</td>
+    <td>{m.rmse.toLocaleString()}</td>
+    <td>{m.mae.toLocaleString()}</td>
+    <td>{m.r2}</td>
+  </tr>
+))}
 ```
 
-Una línea. Es el mismo patrón del tablero de la sesión 1, y a estas alturas debería aburrirte:
-eso es exactamente lo que se buscaba.
+### Los dos paneles vacíos son el encargo
 
-### `TODO 10` — la tabla
+**Modelos comparados** y **Experimentos de hiperparámetros** salen vacíos, con un mensaje que
+dice qué llenar:
 
-```javascript
-        {datos.rows.length === 0 ? (
-          <div className="vacio">
-            Todavía no hay ninguna. Ve a <strong>Predecir</strong> y estima un
-            precio: va a aparecer aquí.
-          </div>
-        ) : (
-          <div className="scroll-x">
-            <table>
-              <thead>
-                <tr>
-                  <th className="txt">Cuándo</th>
-                  <th className="txt">Colonia</th>
-                  <th>Superficie</th>
-                  <th>Calidad</th>
-                  <th>Estimado</th>
-                  <th className="txt">Modelo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {datos.rows.map((f) => (
-                  <tr key={f.prediction_id}>
-                    <td className="txt">{cuando(f.created_at)}</td>
-                    <td className="txt">{f.input.Neighborhood}</td>
-                    <td>{Number(f.input.GrLivArea).toLocaleString()}</td>
-                    <td>{f.input.OverallQual}</td>
-                    <td>{pesos(f.prediction)}</td>
-                    <td className="txt mono">{f.model_version}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+> Sin datos. En tu reto, llena `model_comparison` en `metadata.json` con los candidatos que
+> probaste y esta tabla aparece sola.
+
+Eso es deliberado. En este módulo entrenamos **un** modelo sin discutirlo, porque el tema es
+otro. En tu reto vas a probar varios y vas a tener que justificar cuál elegiste — y cuando lo
+hagas, no escribes frontend: escribes JSON.
+
+```json
+"model_comparison": [
+  {"algorithm": "LogisticRegression", "f1": 0.81, "notas": "baseline"},
+  {"algorithm": "RandomForest",       "f1": 0.89, "notas": "elegido"}
+]
 ```
 
-El estado vacío no dice "sin datos". **Dice qué hacer.** El usuario que acaba de llegar no
-sabe que el historial se llena desde la otra pestaña, y un "sin datos" lo deja mirando una
-caja gris. Es media línea de código y es la diferencia entre una pantalla muerta y una que
-enseña a usarse.
-
-La columna `model_version` parece de relleno hoy, porque todo dice `1.0.0`. No lo es: el día
-que entrenes otra versión, esta columna es la que te deja comparar lo que predecía la vieja
-contra lo que predice la nueva **sobre las mismas casas**. Sin ella tienes un montón de
-números sin saber quién los dijo.
-
-### Ciérralo
-
-Ve a **Predecir**, estima un precio, y vuelve a **Historial**. Ahí está, hasta arriba.
-
-Ese ciclo —pedir, registrar, consultar— es el producto. Lo demás es presentación.
+Esa página es la que vas a enseñar cuando te pidan justificar tu modelo.
 
 ---
 
-## 1:47 — La prueba que importa (8 min)
+## 1:30 — La prueba que importa (12 min)
 
 Dijimos que el formulario sale del contrato. Vamos a comprobarlo, porque "sale del contrato"
 es fácil de decir y fácil de creer sin que sea cierto.
@@ -823,28 +583,61 @@ archivo de datos y se movieron tres capas a la vez: el formulario, la ayuda y la
 Eso es lo que significa que algo esté derivado del contrato, y es exactamente lo que va a
 hacer que tu modelo de clasificación entre en este mismo frontend sin reescribirlo.
 
-**Deja `metadata.json` como estaba** — o mejor, vuelve a generar el artefacto en la sesión 4.
+**Deja `metadata.json` como estaba.** El comando más rápido, en la instancia:
 
-### Y de paso, la lección incómoda
+```bash
+git checkout -- artifacts/metadata.json
+```
 
-Con el `metadata.json` original, pide una predicción para una casa de **9000 pies cuadrados**,
-dejando lo demás como viene. Mira el número.
+---
 
-Sale alrededor de **166,000** — *menos* que una casa de 2,600 pies en NoRidge, que da unos
-306,000.
+## 1:42 — Usarlo de verdad (10 min)
+
+Deja de mirar el código. Abre `http://TU-IP:3000` en el teléfono, o pásale la dirección a
+alguien del equipo de al lado.
+
+Haz el recorrido completo, como si no lo hubieras escrito tú:
+
+1. **Tablero.** ¿Qué colonia es la más cara? Fíltrala.
+2. **Predecir.** Arma una casa de esa colonia y estima su precio. Compáralo con el promedio
+   que te dice la propia pantalla.
+3. **Predecir otra vez**, cambiando solo `OverallQual` de 5 a 8. Mira cuánto se mueve el
+   precio — es el 58% de importancia que la Model Card te había anunciado.
+4. **Model Card.** Enséñale a tu compañero con qué datos se entrenó y qué tan bien predice,
+   sin abrir el notebook.
+
+### Lo que hay que notar
+
+Nadie escribió JSON. Nadie supo que existe un endpoint. Y aun así el recorrido contesta las
+tres preguntas que un producto de datos tiene que contestar:
+
+```
+   ¿qué dicen los datos?        el tablero
+   ¿qué predice el modelo?      el formulario
+   ¿por qué debería creerle?    la Model Card
+```
+
+Eso es lo que entregas. Lo demás —el historial, la explicación en palabras, la base de datos
+de verdad— son mejoras sobre algo que **ya funciona**, y llegan en la sesión 4.
+
+### Antes de cerrar, un vistazo incómodo
+
+Con el formulario abierto, pon `GrLivArea` en **9000** y estima.
+
+Sale alrededor de **166,000** — *menos* que la casa de 2,600 pies que probaste antes.
 
 No es un bug. Un Random Forest **no extrapola**: nunca vio una casa de 9000 pies, así que la
 mete por las ramas que conoce y devuelve un promedio de casas que no se le parecen. Y lo hace
 con la misma cara de confianza que cuando acierta.
 
-Por eso existe ese *warning*, y por eso lo muestra la interfaz en vez de tragárselo. Tu modelo
-**siempre va a devolver algo**. Que devuelva algo no significa que sepa. En tu reto de
+Por eso existe ese aviso amarillo, y por eso la interfaz lo muestra en vez de tragárselo. Tu
+modelo **siempre va a devolver algo**. Que devuelva algo no significa que sepa. En tu reto de
 clasificación pasa igual: una probabilidad de 0.97 sobre un caso que no se parece a nada del
 entrenamiento sigue siendo 0.97 en pantalla.
 
 ---
 
-## 1:55 — Cierre (5 min)
+## 1:52 — Cierre (8 min)
 
 Antes de guardar, corre las pruebas:
 
@@ -852,70 +645,67 @@ Antes de guardar, corre las pruebas:
 ./setup/run test
 ```
 
-Ahora son dos. La de la sesión 2 sigue comprobando que el notebook y el servicio predicen lo
-mismo. La nueva comprueba tres cosas del registro:
+Sigue siendo la de la sesión 2 —que el notebook y el servicio predicen el mismo número— y
+tiene que seguir en verde: hoy no tocaste el backend, así que si se rompió, se rompió por algo
+que no querías.
 
-```
-   12 validas + 5 rechazadas  ->  12 filas en el log
-
-   OK  cada prediccion exitosa dejo exactamente una fila
-   OK  cada prediction_id devuelto corresponde a una fila, y solo una
-   OK  ninguna peticion rechazada con 400 genero fila
-   OK  el historial viene de mas reciente a mas antiguo
-   OK  cada fila guarda el input completo (10 campos)
-   OK  un limite absurdo se acota en lugar de fallar
-```
-
-Son invariantes que **se rompen en silencio**: nada falla, nada avisa, y el día que alguien
-audite el historial los números no cuadran. Si un `400` dejara fila, cualquier métrica de uso
-estaría inflada. Si una predicción dejara dos, también.
-
-Ese es el tipo de cosa que conviene probar: no la que revienta, la que miente.
-
-Guarda todo:
+Guarda todo, **en tu computadora**:
 
 ```bash
 git add -A
-git commit -m "sesión 3: historial, explicación y las vistas del producto"
+git commit -m "sesión 3: el producto tiene interfaz"
 git push
 ```
+
+Y en la instancia: `./setup/run sync && ./setup/run restart`.
 
 Lo que tienes ahora:
 
 ```
-   /api/health     dice si el servicio está sano, y qué módulo falla si no
-   /api/stats      cifras y agregados         ← sesión 1
-   /api/data       casas del dataset          ← sesión 1
-   /api/model      el contrato                ← sesión 2
-   /api/predict    predice, valida y avisa    ← sesión 2
-   /api/history    lo que ha predicho         ← sesión 3
-   /api/explain    por qué ese número         ← sesión 3
-
-   Tablero · Predecir · Historial · Model Card
+   API                                        INTERFAZ
+   /api/health   ¿está sano?      ← ses. 1
+   /api/stats    cifras           ← ses. 1    Tablero
+   /api/data     casas            ← ses. 1    Tablero
+   /api/model    el contrato      ← ses. 2    Predecir · Model Card
+   /api/predict  predice y avisa  ← ses. 2    Predecir
 ```
 
-Y una pieza que no escribiste y conviene que abras antes de irte:
-[frontend/src/vistas/ModelCard.jsx](../frontend/src/vistas/ModelCard.jsx).
+Cinco endpoints, tres vistas, y **ni una línea de backend escrita hoy.** La sesión entera fue
+conectar lo que ya tenías con alguien que lo pueda usar.
 
-Todo lo que muestra sale de `metadata.json`: el algoritmo, los tamaños de los splits, las
-métricas, las importancias. Cada panel lleva escrito **a qué renglón de la rúbrica de tu reto
-responde**. Los dos últimos —comparación de modelos y experimentos de hiperparámetros— salen
-vacíos hoy a propósito, con un mensaje que te dice qué llenar en `metadata.json` para que
-aparezcan solos.
+### Las tres ideas que te llevas
 
-Esa página es la que vas a enseñar cuando te pidan justificar tu modelo. No la escribas de
-nuevo: llénale el `metadata.json`.
+1. **El formulario sale del contrato.** Cambia `metadata.json` y cambia la interfaz. Lo
+   comprobaste, no te lo creíste.
+2. **Lo secundario no tumba lo principal.** `/api/explain` no existe y el precio se muestra
+   igual.
+3. **Agregar una vista es agregar un archivo.** El ensamblador la encuentra sola.
 
-### Lo que queda para la sesión 4
+Las tres se copian tal cual a tu reto.
 
-Hoy tus datos son un CSV en el repositorio y tu historial un archivo SQLite junto al código.
-Ninguna de las dos cosas sobrevive a que alguien apague la instancia y levante otra. En la
-sesión 4 el origen pasa a ser una base de datos PostgreSQL de verdad, fuera de la máquina — y
-vas a ver que los endpoints que escribiste hoy **no se enteran**, porque ninguno de ellos sabe
-de dónde salen los datos.
+### Lo que viene en la sesión 4
 
-Los comentarios `ATAJO-P1` que has ido viendo en el código marcan exactamente eso: dónde
-tomamos el camino corto y qué lo reemplaza después.
+Tu producto no tiene memoria: cierra la pestaña y no queda rastro de lo que predijo. Y tus
+datos siguen siendo un CSV dentro del repositorio, que no sobrevive a que alguien apague la
+instancia y levante otra.
+
+La sesión 4 arregla las dos, en ese orden:
+
+```
+   1. El servicio recuerda      cada predicción queda registrada, y se consulta
+      y explica                 el número se traduce a una frase
+                                  -> /api/history, /api/explain, pestaña Historial
+                                  -> las dos funciones de api.js que hoy no tienen a quién llamar
+
+   2. El origen es una base     el CSV se va a PostgreSQL, fuera de la máquina
+      de datos de verdad          -> y ningún endpoint se entera
+```
+
+Fíjate en que el punto 1 **ya está preparado desde hoy**: escribiste `explicar` y `getHistory`
+en `api.js`, y el formulario ya pide la explicación. Cuando el backend exista, aparece sola.
+
+Los comentarios `ATAJO-P1` que has ido viendo en el código marcan exactamente dónde tomamos el
+camino corto y qué lo reemplaza después.
 
 ---
 

@@ -37,7 +37,7 @@ frontend/src/styles.css
 [TUYOS]
 backend/s1_tablero.py
 backend/s2_modelo.py
-backend/s3_producto.py
+backend/s4_producto.py
 frontend/src/api.js
 frontend/src/vistas/Tablero.jsx
 frontend/src/vistas/Predecir.jsx

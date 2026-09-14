@@ -362,7 +362,7 @@ case "${1:-}" in
 
     cd "$REPO_DIR"
     git remote get-url curso >/dev/null 2>&1 || git remote add curso "$CURSO"
-    echo "  consultando el curso..."
+    [[ -n "${TC3009_RELANZADO:-}" ]] || echo "  consultando el curso..."
     git fetch -q --force --tags curso \
       || { mal "no se pudo contactar al repositorio del curso"; exit 1; }
 
@@ -426,9 +426,15 @@ case "${1:-}" in
     # con el de cada alumno. Por eso el reset lo borra, y por eso hay que
     # devolverlo. Son 10 minutos de Colab.
     if git cat-file -e "$RESPALDO:artifacts/pipeline.joblib" 2>/dev/null; then
-      git checkout "$RESPALDO" -- artifacts/ 2>/dev/null \
-        && ok "tu artefacto se conservo (artifacts/)" \
-        || aviso "no se pudo restaurar artifacts/; esta en $RESPALDO"
+      if git checkout "$RESPALDO" -- artifacts/ 2>/dev/null; then
+        # Y se confirma. 'git checkout <rama> -- ruta' solo deja los archivos
+        # en el indice: sin este commit, el 'git push --force' de abajo subiria
+        # un fork SIN artefacto, y el alumno lo descubriria en la instancia.
+        git commit -q -m "conservar mi artefacto tras recuperar $sesion" || true
+        ok "tu artefacto se conservo (artifacts/)"
+      else
+        aviso "no se pudo restaurar artifacts/; esta en $RESPALDO"
+      fi
     fi
 
     echo
@@ -437,7 +443,7 @@ case "${1:-}" in
     # --- Verificacion: 'reparado' es algo que se comprueba, no que se espera ---
     echo
     echo "  Esto es lo que tienes ahora:"
-    for f in backend/s1_tablero.py backend/s2_modelo.py backend/s3_producto.py \
+    for f in backend/s1_tablero.py backend/s2_modelo.py \
              backend/s4_producto.py frontend/src/api.js \
              frontend/src/vistas/Predecir.jsx frontend/src/vistas/Historial.jsx; do
       [[ -f "$f" ]] || continue

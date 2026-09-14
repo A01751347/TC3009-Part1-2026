@@ -1,4 +1,4 @@
-"""Comprueba las tres promesas del registro de predicciones (sesion 3).
+"""Comprueba las tres promesas del registro de predicciones (sesion 4).
 
     ./setup/run test
 
@@ -55,8 +55,8 @@ def main():
 
     import app  # noqa: E402
 
-    if not any(m.__name__ == "s3_producto" for m in app.modulos):
-        print("  el modulo de la sesion 3 no esta escrito todavia; se omite.")
+    if not any(m.__name__ == "s4_producto" for m in app.modulos):
+        print("  el modulo de la sesion 4 no esta escrito todavia; se omite.")
         return 0
 
     cliente = app.app.test_client()
