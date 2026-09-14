@@ -520,14 +520,14 @@ Seis paneles, y cada uno lleva escrito a qué renglón de la rúbrica responde:
 número `0.9024` que ves en pantalla. No está:
 
 ```javascript
-{metricas.map(([nombre, m]) => (
-  <tr key={nombre}>
-    <td className="txt">{nombre}</td>
-    <td>{m.rmse.toLocaleString()}</td>
-    <td>{m.mae.toLocaleString()}</td>
-    <td>{m.r2}</td>
-  </tr>
-))}
+              {metricas.map(([nombre, m]) => (
+                <tr key={nombre}>
+                  <td className="txt">{nombre}</td>
+                  <td>{m.rmse.toLocaleString()}</td>
+                  <td>{m.mae.toLocaleString()}</td>
+                  <td>{m.r2}</td>
+                </tr>
+              ))}
 ```
 
 ### Los dos paneles vacíos son el encargo
@@ -719,6 +719,22 @@ git push --force
 ```
 
 **Y en la instancia:** `./setup/run sync && ./setup/run restart`
+
+Tres cosas que ese comando garantiza, y por eso puedes usarlo sin miedo:
+
+- **No pierdes nada.** Lo que tenías queda en una rama `respaldo/<fecha>`.
+- **Conservas tu artefacto.** No tienes que volver a correr el notebook.
+- **Se actualiza sola.** Si tu copia de `setup/` es vieja, trae la del curso primero.
+
+> **¿Y si `recuperar` ni siquiera existe en tu copia?** Tres líneas de git puro lo arreglan
+> desde cualquier estado:
+>
+> ```bash
+> git fetch https://github.com/vsosahdz/TC3009-Part1-2026.git main
+> git checkout FETCH_HEAD -- setup/
+> ./setup/run recuperar 3 --si
+> ```
+
 
 Te deja con la sesión 3 terminada. Compara contra lo tuyo antes de descartarlo: lo que
 escribiste a medias suele estar más cerca de lo que crees.

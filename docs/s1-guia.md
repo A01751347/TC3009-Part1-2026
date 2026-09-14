@@ -710,5 +710,21 @@ git push --force
 
 **Y en la instancia:** `./setup/run sync && ./setup/run restart`
 
+
+Tres cosas que ese comando garantiza, y por eso puedes usarlo sin miedo:
+
+- **No pierdes nada.** Lo que tenías queda en una rama `respaldo/<fecha>`.
+- **Conservas tu artefacto.** No tienes que volver a correr el notebook.
+- **Se actualiza sola.** Si tu copia de `setup/` es vieja, trae la del curso primero.
+
+> **¿Y si `recuperar` ni siquiera existe en tu copia?** Tres líneas de git puro lo arreglan
+> desde cualquier estado:
+>
+> ```bash
+> git fetch https://github.com/vsosahdz/TC3009-Part1-2026.git main
+> git checkout FETCH_HEAD -- setup/
+> ./setup/run recuperar 1 --si
+> ```
+
 Te deja en el estado correcto al cierre de esta sesión. Sin vergüenza: es más rápido que
 depurar en vivo, y es para lo que existen los checkpoints.

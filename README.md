@@ -53,19 +53,8 @@ No instales nada más. En serio.
 ## Si te quedas atrás, no te quedes atrás
 
 Pasa, y está previsto. No preguntes, no te disculpes, no intentes alcanzar tecleando más
-rápido. Salta al último checkpoint y sigue:
-
-**En tu instancia:**
-
-```bash
-./setup/run recuperar 2      # el estado al cierre de la sesión 2
-```
-
-Eso consulta el repositorio del curso y te deja exactamente ahí. Luego `git push --force`
-desde tu computadora para que tu fork quede igual.
-
-⚠ Esto **descarta** lo que llevas sin guardar. Es a propósito: es más rápido volver al punto
-bueno que depurar en vivo. El comando te avisa qué se va a perder antes de hacerlo.
+rápido. Salta al último checkpoint y sigue: **[la red de seguridad](#si-algo-se-rompe-la-red-de-seguridad)**
+te devuelve al estado correcto sin perder tu trabajo ni tu artefacto.
 
 > No uses `git reset --hard s2` a mano. Ese tag vive en **tu** fork y se quedó fijo en el
 > commit que existía cuando forkeaste: no se mueve aunque el curso publique correcciones.
@@ -79,8 +68,8 @@ bueno que depurar en vivo. El comando te avisa qué se va a perder antes de hace
 |---|------|----------------|
 | 1 | **La máquina y el contrato** | Tu instancia Ubuntu, la API en Flask, el tablero corriendo. Y CORS |
 | 2 | **La costura** | El modelo cruza la frontera: pipeline exportado, contrato, validación, paridad |
-| 3 | **El producto** | Formulario de predicción, historial, explicación, Model Card |
-| 4 | **El despliegue** | De servidor de desarrollo a contenedor, y el puente a tu reto |
+| 3 | **El producto** | El frontend: formulario derivado del contrato, Model Card. Cero backend |
+| 4 | **Memoria y origen** | Historial, explicación, y el CSV se muda a una base de datos |
 
 La sesión 2 es la más importante del módulo. Si vas a faltar a una, que no sea esa.
 
@@ -96,7 +85,7 @@ La sesión 2 es la más importante del módulo. Si vas a faltar a una, que no se
 ./setup/run logs      # últimas líneas de los dos registros
 ./setup/run sync      # trae los cambios que empujaste desde tu laptop
 ./setup/run actualizar 2   # trae el material para empezar la sesión 2
-./setup/run recuperar 1    # te deja como al cerrar la sesión 1
+./setup/run recuperar 1    # te repara: te deja como al cerrar la sesión 1
 ./setup/run url       # en qué dirección está tu tablero
 ./setup/run doctor    # revisa el entorno y dice qué falta
 ./setup/run test      # corre todas las pruebas
@@ -159,7 +148,8 @@ template-clasificacion/   lo que te llevas al reto
 | [docs/api-contrato.md](docs/api-contrato.md) | Todo el tiempo. Es la referencia de la API |
 | [docs/s1-guia.md](docs/s1-guia.md) | Sesión 1 — la máquina y el contrato |
 | [docs/s2-guia.md](docs/s2-guia.md) | Sesión 2 — el modelo cruza la frontera |
-| [docs/s3-guia.md](docs/s3-guia.md) | Sesión 3 — el producto |
+| [docs/s3-guia.md](docs/s3-guia.md) | Sesión 3 — el producto (frontend) |
+| [docs/s4-guia.md](docs/s4-guia.md) | Sesión 4 — memoria, palabras y un origen de verdad |
 | [docs/extras/](docs/extras/) | Opcional, para el reto |
 
 Cada sesión empieza trayendo su material:
@@ -170,6 +160,41 @@ Cada sesión empieza trayendo su material:
 
 Llegan archivos **nuevos**; lo que ya escribiste no se toca. Quién es dueño de qué está en
 [setup/archivos-del-curso.txt](setup/archivos-del-curso.txt).
+
+---
+
+## Si algo se rompe: la red de seguridad
+
+No importa qué tan atrás vayas, qué hayas borrado, ni desde cuándo no actualizas. **Un solo
+comando te devuelve al estado correcto**, en tu computadora:
+
+```bash
+./setup/run recuperar 2 --si     # el número de la sesión que quieres tener terminada
+git push --force
+```
+
+Y en la instancia: `./setup/run sync && ./setup/run restart`.
+
+Tres cosas que ese comando garantiza:
+
+| | |
+|---|---|
+| **No pierdes nada** | Todo lo que tenías queda en una rama `respaldo/<fecha>`. Si te arrepientes, `git reset --hard respaldo/...` y vuelves |
+| **Conservas tu artefacto** | `artifacts/` es tuyo y se restaura. No tienes que volver a correr el notebook |
+| **Se actualiza sola** | Si tu copia de `setup/` es vieja, trae la del curso y se relanza con ella |
+
+### Si ni eso funciona
+
+Si tu fork es tan viejo que `recuperar` ni existe, arráncalo con git puro — tres líneas que
+funcionan siempre, desde cualquier estado:
+
+```bash
+git fetch https://github.com/vsosahdz/TC3009-Part1-2026.git main
+git checkout FETCH_HEAD -- setup/
+./setup/run recuperar 2 --si
+```
+
+La primera línea trae la herramienta al día; la tercera ya es la versión nueva.
 
 ---
 
