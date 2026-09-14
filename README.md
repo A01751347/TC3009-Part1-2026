@@ -157,7 +157,19 @@ template-clasificacion/   lo que te llevas al reto
 |---|---|
 | [docs/00-setup.md](docs/00-setup.md) | Antes de la sesión 1 |
 | [docs/api-contrato.md](docs/api-contrato.md) | Todo el tiempo. Es la referencia de la API |
-| [docs/s1-guia.md](docs/s1-guia.md) | Durante la sesión 1 |
+| [docs/s1-guia.md](docs/s1-guia.md) | Sesión 1 — la máquina y el contrato |
+| [docs/s2-guia.md](docs/s2-guia.md) | Sesión 2 — el modelo cruza la frontera |
+| [docs/s3-guia.md](docs/s3-guia.md) | Sesión 3 — el producto |
+| [docs/extras/](docs/extras/) | Opcional, para el reto |
+
+Cada sesión empieza trayendo su material:
+
+```bash
+./setup/run actualizar 3      # el número de la sesión que vas a empezar
+```
+
+Llegan archivos **nuevos**; lo que ya escribiste no se toca. Quién es dueño de qué está en
+[setup/archivos-del-curso.txt](setup/archivos-del-curso.txt).
 
 ---
 
