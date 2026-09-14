@@ -10,8 +10,17 @@ sobre codigo que ya escribiste, y no hay conflictos con tu version.
     backend/
     ├── app.py           esto. el ensamblador. no lo edites
     ├── s1_tablero.py    sesion 1: stats y data
-    ├── s2_modelo.py     sesion 2: el modelo y las predicciones
-    └── s3_producto.py   sesion 3: historial y explicaciones
+    ├── s2_modelo.py     sesion 2: el modelo y las predicciones  (*)
+    └── s3_producto.py   sesion 3: historial y explicaciones     (*)
+
+(*) Los modulos marcados NO existen todavia: cada uno llega al empezar su
+    sesion, cuando corres
+
+        ./setup/run actualizar 2      (y luego 3, y luego 4)
+
+    Si buscas s2_modelo.py y no esta, no falta nada: es que no has traido el
+    material de esa sesion. Mientras tanto, la aplicacion funciona con los
+    modulos que si existen.
 
 Para correrlo:  ./setup/run start
 """
