@@ -240,7 +240,6 @@ case "${1:-}" in
     fi
 
     CURSO="https://github.com/vsosahdz/TC3009-Part1-2026.git"
-    LISTA="$REPO_DIR/setup/archivos-del-curso.txt"
 
     # Se lee de la RAMA remota del curso, no de un tag local.
     #
@@ -273,6 +272,26 @@ case "${1:-}" in
       echo
     fi
 
+    # La tabla de propiedad se lee del CURSO, no de tu copia local.
+    #
+    # Son dos razones, y la segunda es un bug que costo encontrar:
+    #
+    #   1. La tabla es [DEL CURSO]: la version buena es siempre la del curso.
+    #      Si una sesion nueva cambia de dueño un archivo, ese cambio tiene que
+    #      aplicar YA, no a partir de la proxima vez.
+    #
+    #   2. Leyendola del disco, este mismo bucle la estaba pisando a media
+    #      lectura. 'git checkout -- setup/' reemplaza el archivo --inodo
+    #      nuevo-- mientras el 'while read' sigue leyendo el inodo viejo. El
+    #      resultado es que la tabla nueva no surtia efecto hasta correr
+    #      'actualizar' DOS veces, y el sintoma --un archivo que dice
+    #      "conservado" cuando debia actualizarse-- no apunta a la causa por
+    #      ningun lado.
+    #
+    # Leerla en memoria antes de tocar nada elimina las dos cosas.
+    LISTA_TXT="$(git show "$REF:setup/archivos-del-curso.txt" 2>/dev/null)" \
+      || LISTA_TXT="$(cat "$REPO_DIR/setup/archivos-del-curso.txt")"
+
     seccion=""
     traidos=0
     conservados=0
@@ -303,7 +322,7 @@ case "${1:-}" in
           traidos=$((traidos + 1))
         fi
       fi
-    done < "$LISTA"
+    done <<< "$LISTA_TXT"
 
     echo
     ok "$traidos rutas traidas del curso, $conservados conservadas tal cual"

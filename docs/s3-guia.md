@@ -106,7 +106,7 @@ Lo que llega:
     nuevo        frontend/src/vistas/Predecir.jsx    el formulario, con 3 TODO
     nuevo        frontend/src/vistas/Historial.jsx   la tabla, con 2 TODO
     nuevo        frontend/src/vistas/ModelCard.jsx   completa, de regalo
-    actualizado  frontend/src/App.jsx                ahora es un ensamblador
+    actualizado  frontend/src/main.jsx               ahora es un ensamblador
     conservado   backend/s2_modelo.py  (ya lo tienes)
     conservado   frontend/src/api.js   (ya lo tienes)
 ```
@@ -114,9 +114,12 @@ Lo que llega:
 Fíjate en las dos últimas líneas: **tu código de las sesiones 1 y 2 no se tocó.** Eso no es
 casualidad, está declarado en [setup/archivos-del-curso.txt](../setup/archivos-del-curso.txt).
 
-Y fíjate en `App.jsx`, que sí se sobreescribió. Es el único archivo del frontend que cambia,
+Y fíjate en `main.jsx`, que sí se sobreescribió. Es el único archivo del frontend que cambia,
 y cambia porque **nunca lo escribiste tú**: llegó hecho en la sesión 1. Es un ensamblador,
 igual que `backend/app.py`. Los ensambladores son del curso; tu código es tuyo.
+
+Si te queda un `frontend/src/App.jsx` de las sesiones anteriores, ya no se usa: su contenido
+—el tablero— vive ahora en `frontend/src/vistas/Tablero.jsx`. Puedes borrarlo.
 
 Ahora arranca lo que ya funciona:
 
@@ -475,7 +478,7 @@ Guarda. **La página ya no está en blanco.**
 
 ## 0:58 — El ensamblador del frontend (7 min)
 
-Abre [frontend/src/App.jsx](../frontend/src/App.jsx). Es corto, y no lo vas a editar hoy ni
+Abre [frontend/src/main.jsx](../frontend/src/main.jsx). Es corto, y no lo vas a editar hoy ni
 nunca.
 
 ```javascript
