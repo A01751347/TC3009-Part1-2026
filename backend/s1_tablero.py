@@ -42,25 +42,110 @@ DATA_PATH = os.environ.get("DATA_PATH", str(RAIZ / "data" / "train.csv"))
 df = pd.read_csv(DATA_PATH)
 
 
-# ---------------------------------------------------------------------------
-# ESTADO DE ARRANQUE: los dos endpoints estan por escribir.
-#
-# app.py ya descubre este modulo y registra su blueprint, y /api/health ya
-# responde. Lo que falta son los dos endpoints que alimentan el tablero.
-# ---------------------------------------------------------------------------
+@bp.get("/api/stats")
+def stats():
+    """Agregados del dataset. Alimenta las graficas del tablero.
+
+    Si llega el parametro neighborhood, las estadisticas del target y el
+    desglose por calidad se calculan solo sobre esa colonia. El desglose por
+    colonia se mantiene global a proposito: es el eje de comparacion del
+    tablero, y filtrarlo a una sola colonia lo dejaria sin sentido. El frontend
+    resalta la seleccionada en lugar de esconder las demas.
+    """
+    neighborhood = request.args.get("neighborhood")
+    alcance = df[df["Neighborhood"] == neighborhood] if neighborhood else df
+
+    # Siempre sobre df completo, nunca sobre el alcance filtrado.
+    por_colonia = (
+        df.groupby("Neighborhood")[TARGET_COLUMN]
+        .agg(["count", "mean"])
+        .reset_index()
+        .sort_values("mean", ascending=False)
+    )
+    by_neighborhood = [
+        {
+            "neighborhood": fila["Neighborhood"],
+            "count": int(fila["count"]),
+            "mean_price": round(float(fila["mean"]), 1),
+        }
+        for _, fila in por_colonia.iterrows()
+    ]
+
+    # Una colonia sin registros no es un error: es un resultado vacio.
+    if len(alcance) == 0:
+        return jsonify(
+            {
+                "count": 0,
+                "scope": neighborhood,
+                "target": None,
+                "by_neighborhood": by_neighborhood,
+                "by_overall_qual": [],
+            }
+        )
+
+    precios = alcance[TARGET_COLUMN]
+    por_calidad = (
+        alcance.groupby("OverallQual")[TARGET_COLUMN]
+        .agg(["count", "mean"])
+        .reset_index()
+        .sort_values("OverallQual")
+    )
+
+    # Los tipos de numpy no son serializables a JSON: int() y float() no son
+    # adorno. Sin ellos el servidor truena con
+    # "Object of type int64 is not JSON serializable".
+    return jsonify(
+        {
+            "count": int(len(alcance)),
+            "scope": neighborhood,
+            "target": {
+                "name": TARGET_COLUMN,
+                "min": int(precios.min()),
+                "mean": round(float(precios.mean()), 1),
+                "median": int(precios.median()),
+                "max": int(precios.max()),
+            },
+            "by_neighborhood": by_neighborhood,
+            "by_overall_qual": [
+                {
+                    "overall_qual": int(fila["OverallQual"]),
+                    "count": int(fila["count"]),
+                    "mean_price": round(float(fila["mean"]), 1),
+                }
+                for _, fila in por_calidad.iterrows()
+            ],
+        }
+    )
 
 
-# TODO sesion 1: GET /api/stats
-#
-# Devuelve los agregados del dataset. Alimenta las graficas del tablero.
-# El contrato exacto esta en docs/api-contrato.md.
-#
-# Acepta un parametro opcional neighborhood que acota count, target y
-# by_overall_qual. by_neighborhood se queda global a proposito: es el eje de
-# comparacion, y filtrarlo a una sola colonia lo dejaria sin sentido.
+@bp.get("/api/data")
+def data():
+    """Registros individuales, con filtro opcional por colonia."""
+    neighborhood = request.args.get("neighborhood")
 
+    # Un limit que no es un numero no tumba la peticion: se usa el de por
+    # defecto. Despues se acota al rango permitido.
+    try:
+        limit = int(request.args.get("limit", DEFAULT_LIMIT))
+    except ValueError:
+        limit = DEFAULT_LIMIT
+    limit = max(1, min(limit, MAX_LIMIT))
 
-# TODO sesion 1: GET /api/data
-#
-# Devuelve registros individuales, con filtro opcional por colonia y un limite.
-# Un filtro sin coincidencias NO es un error: responde 200 con lista vacia.
+    filtrado = df
+    if neighborhood:
+        filtrado = filtrado[filtrado["Neighborhood"] == neighborhood]
+
+    # count es cuantas filas van en esta respuesta; total_matching cuantas
+    # cumplen el filtro en total. La diferencia es la que permite paginar.
+    total = int(len(filtrado))
+    pagina = filtrado.head(limit)[EXPOSED_COLUMNS]
+
+    # Un filtro sin coincidencias devuelve una lista vacia con 200, no un error.
+    # Una busqueda vacia es un resultado legitimo; un error es que algo salio mal.
+    return jsonify(
+        {
+            "count": int(len(pagina)),
+            "total_matching": total,
+            "rows": pagina.to_dict(orient="records"),
+        }
+    )
