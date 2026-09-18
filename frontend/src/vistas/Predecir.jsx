@@ -1,4 +1,4 @@
-export const meta = { titulo: "Predecir", orden: 2, glifo: "◈" };
+export const meta = { titulo: "Simular", orden: 2, glifo: "◈" };
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { explicar, getModel, getSimilares, getStats, predecir } from "../api.js";

@@ -1,4 +1,4 @@
-export const meta = { titulo: "Model Card", orden: 4, glifo: "◎" };
+export const meta = { titulo: "Modelo", orden: 4, glifo: "◎" };
 
 import { useEffect, useState } from "react";
 import { getModel } from "../api.js";
@@ -64,7 +64,7 @@ export default function ModelCard() {
   return (
     <>
       <header className="cabecera-vista">
-        <h1>Model Card</h1>
+        <h1>Dentro del modelo</h1>
         <p>
           Todo lo que hay aquí se lee de <code>metadata.json</code>. Nada está
           escrito a mano: si cambias el modelo, esta página cambia sola.

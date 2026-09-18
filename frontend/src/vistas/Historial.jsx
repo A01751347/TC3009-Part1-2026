@@ -1,4 +1,4 @@
-export const meta = { titulo: "Historial", orden: 3, glifo: "◷" };
+export const meta = { titulo: "Bitácora", orden: 3, glifo: "◷" };
 
 import { useEffect, useState } from "react";
 import { getHistory, getModel } from "../api.js";
@@ -96,7 +96,7 @@ export default function Historial({ onNavigate }) {
   return (
     <>
       <header className="cabecera-vista">
-        <h1>Historial de uso</h1>
+        <h1>Bitácora de predicciones</h1>
         <p>
           Lo que este modelo ha estado prediciendo. No es el dataset de
           entrenamiento: es el uso real del producto, y es lo único que un
@@ -116,14 +116,14 @@ export default function Historial({ onNavigate }) {
                 las variables de mayor peso en el modelo
               </p>
             </div>
-            <button className="b" type="button" onClick={() => onNavigate?.("Predecir")}>
+            <button className="b" type="button" onClick={() => onNavigate?.("Simular")}>
               + Nueva predicción
             </button>
           </header>
           <div className="cuerpo">
             {datos.rows.length === 0 ? (
               <div className="vacio">
-                Todavía no hay ninguna. Ve a <strong>Predecir</strong> y haz una:
+                Todavía no hay ninguna. Ve a <strong>Simular</strong> y haz una:
                 va a aparecer aquí.
               </div>
             ) : (
@@ -181,7 +181,7 @@ export default function Historial({ onNavigate }) {
                               <button
                                 type="button"
                                 className="repetir-prediccion"
-                                onClick={() => onNavigate?.("Predecir", { input: f.input, predictionId: f.prediction_id })}
+                                onClick={() => onNavigate?.("Simular", { input: f.input, predictionId: f.prediction_id })}
                               >
                                 Reutilizar →
                               </button>

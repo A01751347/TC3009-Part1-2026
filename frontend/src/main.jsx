@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { getHealth } from "./api.js";
 import "./styles.css";
@@ -50,27 +50,27 @@ function Icono({ nombre, size = 18 }) {
     "aria-hidden": true,
   };
 
-  if (nombre === "Explorar")
+  if (nombre === "Misión" || nombre === "Explorar")
     return (
       <svg {...props}>
         <path d="M4 19V9M10 19V5M16 19v-7M22 19V3" />
         <path d="M2 19h20" />
       </svg>
     );
-  if (nombre === "Predecir")
+  if (nombre === "Simular" || nombre === "Predecir")
     return (
       <svg {...props}>
         <path d="m12 3 1.3 4.2a5 5 0 0 0 3.3 3.3l4.4 1.4-4.4 1.4a5 5 0 0 0-3.3 3.3L12 21l-1.4-4.4a5 5 0 0 0-3.3-3.3L3 12l4.3-1.4a5 5 0 0 0 3.3-3.3L12 3Z" />
       </svg>
     );
-  if (nombre === "Historial")
+  if (nombre === "Bitácora" || nombre === "Historial")
     return (
       <svg {...props}>
         <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
         <path d="M3 3v5h5M12 7v5l3 2" />
       </svg>
     );
-  if (nombre === "Model Card")
+  if (nombre === "Modelo" || nombre === "Model Card")
     return (
       <svg {...props}>
         <rect x="3" y="4" width="18" height="16" rx="3" />
@@ -86,16 +86,18 @@ function Icono({ nombre, size = 18 }) {
   return null;
 }
 
-function MarcaOrbital() {
+function MarcaMision() {
   return (
     <span className="marca-simbolo" aria-hidden="true">
       <span className="marca-nucleo" />
       <span className="marca-orbita" />
+      <span className="marca-estrella" />
     </span>
   );
 }
 
 function App() {
+  const appRef = useRef(null);
   const [activa, setActiva] = useState(0);
   const [salud, setSalud] = useState(null);
   const [contextoVista, setContextoVista] = useState(null);
@@ -107,7 +109,7 @@ function App() {
 
   useEffect(() => {
     if (vistas[activa]) {
-      document.title = `${vistas[activa].titulo} · ${salud?.dataset ?? "Orbit ML"}`;
+      document.title = `${vistas[activa].titulo} · Spaceship Titanic`;
     }
   }, [activa, salud]);
 
@@ -130,17 +132,26 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function seguirCursor(evento) {
+    if (evento.pointerType && evento.pointerType !== "mouse") return;
+    appRef.current?.style.setProperty("--cursor-x", `${evento.clientX}px`);
+    appRef.current?.style.setProperty("--cursor-y", `${evento.clientY}px`);
+  }
+
   return (
-    <div className="app">
+    <div ref={appRef} className="app" onPointerMove={seguirCursor}>
+      <div className="ambiente" aria-hidden="true">
+        <span className="ambiente-orbita ambiente-orbita-a" />
+        <span className="ambiente-orbita ambiente-orbita-b" />
+        <span className="cursor-halo" />
+      </div>
       <header className="lateral">
         <div className="barra-superior">
           <div className="marca">
-            <MarcaOrbital />
+            <MarcaMision />
             <div className="marca-texto">
-              <span className="marca-nombre">ORBIT</span>
-              <span className="marca-sub">
-                {salud?.dataset ?? "Inteligencia de modelo"}
-              </span>
+              <span className="marca-nombre">SPACESHIP</span>
+              <span className="marca-sub"><strong>TITANIC</strong> / INTELLIGENCE LAB</span>
             </div>
           </div>
 
@@ -182,10 +193,17 @@ function App() {
             </button>
           ))}
         </nav>
+
+        <div className="telemetria" aria-label="Telemetría de la misión">
+          <span className="telemetria-id">MISSION ST-01</span>
+          <span><i /> {degradado ? "Enlace degradado" : salud ? "Sistema enlazado" : "Buscando señal"}</span>
+          <span>{salud?.registros ? `${Number(salud.registros).toLocaleString("es-MX")} pasajeros` : "Telemetría en curso"}</span>
+          <span>{salud?.task === "clasificacion" ? "Clasificación binaria" : salud?.task ?? "Modelo predictivo"}</span>
+        </div>
       </header>
 
       <main className="contenido" data-vista={vistas[activa].titulo}>
-        <div className="contenido-marco">
+        <div className="contenido-marco" key={vistas[activa].titulo}>
           <Actual
             contextoNavegacion={contextoVista}
             onNavigate={navegarA}
@@ -193,7 +211,7 @@ function App() {
           />
         </div>
         <footer className="pie-app">
-          <span>Orbit ML Console</span>
+          <span>Spaceship Titanic · Intelligence Lab</span>
           {salud && (
             <span>
               API {salud.api_version} · {(salud.registros ?? 0).toLocaleString("es-MX")} registros ·{" "}

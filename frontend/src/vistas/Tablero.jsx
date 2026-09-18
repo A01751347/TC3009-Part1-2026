@@ -1,4 +1,4 @@
-export const meta = { titulo: "Explorar", orden: 1, glifo: "▤" };
+export const meta = { titulo: "Misión", orden: 1, glifo: "▤" };
 
 import { useEffect, useState } from "react";
 import {
@@ -38,7 +38,7 @@ const celda = (v) => {
   return String(v);
 };
 
-export default function Tablero() {
+export default function Tablero({ onNavigate }) {
   const t = useTokens();
   const [stats, setStats] = useState(null);
   const [filas, setFilas] = useState(null);
@@ -129,12 +129,18 @@ export default function Tablero() {
   return (
     <>
       <header className="cabecera-vista">
-        <h1>Explorar los datos</h1>
+        <h1>Señales de la misión</h1>
         <p>
           Los {miles(stats.by_group.reduce((a, d) => a + d.count, 0) + (stats.excluded ?? 0))}{" "}
           {registro} con los que se entrenó el modelo. Cambia el eje para ver
           qué variable separa de verdad.
         </p>
+        <div className="cabecera-acciones">
+          <button className="b primaria" type="button" onClick={() => onNavigate?.("Simular")}>
+            Probar un pasajero <span aria-hidden="true">→</span>
+          </button>
+          <span>Convierte una señal en un escenario comprobable.</span>
+        </div>
       </header>
 
       <div className="controles">
