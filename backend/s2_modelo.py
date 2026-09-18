@@ -83,7 +83,32 @@ def cargar_artefacto():
     if str(MODEL_DIR) not in sys.path:
         sys.path.insert(0, str(MODEL_DIR))
 
-    pipeline = joblib.load(ruta_pipeline)
+    try:
+        pipeline = joblib.load(ruta_pipeline)
+    except ModuleNotFoundError as e:
+        # El fallo mas caro de diagnosticar del modulo, y el que mas veces pasa.
+        #
+        # joblib guarda REFERENCIAS a las clases del pipeline, no su codigo. Si
+        # el artefacto lleva un XGBClassifier dentro y la maquina que lo sirve
+        # no tiene xgboost, joblib truena con "No module named 'xgboost'" --un
+        # error que no menciona ni el modelo ni el artefacto por ningun lado--.
+        #
+        # Y como app.py importa este modulo al arrancar, el proceso entero
+        # muere: el sintoma que ve el alumno es un ERR_CONNECTION_REFUSED en el
+        # navegador, a tres capas de distancia de la causa.
+        #
+        # Pasa tipicamente despues de un './setup/run sync': sync trae el
+        # codigo nuevo, pero NO instala dependencias.
+        raise RuntimeError(
+            f"no se pudo cargar {ruta_pipeline.name}: falta el modulo "
+            f"'{e.name}'.\n\n"
+            "    El artefacto lleva ese paquete dentro; joblib guarda una\n"
+            "    referencia a la clase, no su codigo, asi que la maquina que\n"
+            "    sirve el modelo necesita tenerlo instalado.\n\n"
+            "    Instala las dependencias y vuelve a arrancar:\n\n"
+            "        bash setup/bootstrap-ec2.sh\n"
+            "        ./setup/run restart\n"
+        ) from e
 
     tarea = contrato.get("task", "regresion")
     if tarea not in TAREAS_VALIDAS:
@@ -112,7 +137,15 @@ def cargar_artefacto():
     return pipeline, contrato
 
 
-pipeline, contrato = cargar_artefacto()
+try:
+    pipeline, contrato = cargar_artefacto()
+except Exception as e:
+    # app.py importa este modulo al arrancar, asi que un fallo aqui tumba el
+    # servicio entero. Se imprime antes de propagar para que el mensaje quede
+    # ARRIBA en './setup/run logs api', y no al final de un traceback largo.
+    print(f"\n*** EL MODELO NO SE PUDO CARGAR ***\n\n    {e}\n", flush=True)
+    raise
+
 
 TAREA = contrato.get("task", "regresion")
 ES_CLASIFICACION = TAREA == "clasificacion"
