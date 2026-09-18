@@ -28,9 +28,12 @@ async function get(path, params = {}) {
 }
 
 export const getHealth = () => get("/api/health");
-export const getStats = (neighborhood) => get("/api/stats", { neighborhood });
-export const getData = (neighborhood, limit = 20) =>
-  get("/api/data", { neighborhood, limit });
+
+// 'scope' y no 'neighborhood': el parametro acota al valor seleccionado del
+// eje principal, sea una colonia o un planeta de origen. El backend sigue
+// aceptando el nombre viejo, pero el cliente ya no lo usa.
+export const getStats = (scope) => get("/api/stats", { scope });
+export const getData = (scope, limit = 20) => get("/api/data", { scope, limit });
 
 // --- Sesion 3 ---
 

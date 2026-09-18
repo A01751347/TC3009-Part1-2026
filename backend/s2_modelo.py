@@ -4,14 +4,29 @@ Aqui vive TODO lo que el servicio necesita saber del modelo: cargar el
 artefacto, verificar que sea compatible, validar la entrada contra el contrato,
 y predecir.
 
-Fijate en lo que este archivo NO hace: no imputa, no escala, no codifica, y no
-invierte el logaritmo del target. Todo eso viaja dentro de pipeline.joblib. Si
-este archivo tuviera que saber algo de eso, la exportacion estaria mal hecha.
+Fijate en lo que este archivo NO hace: no imputa, no escala, no codifica, no
+deriva columnas y no invierte la transformacion del target. Todo eso viaja
+dentro de pipeline.joblib. Si este archivo tuviera que saber algo de eso, la
+exportacion estaria mal hecha.
+
+REGRESION Y CLASIFICACION
+-------------------------
+El contrato declara que tipo de problema resuelve el modelo:
+
+    "task": "regresion"      -> predict() devuelve un numero
+    "task": "clasificacion"  -> predict() devuelve una etiqueta, y ademas se
+                                reportan las probabilidades de cada clase
+
+Un contrato SIN campo 'task' se asume regresion, para que el modelo de precios
+de vivienda siga funcionando sin tocar su metadata.json. La rama de
+clasificacion no es un archivo aparte: es el mismo servicio leyendo un contrato
+distinto. Ese es el punto del modulo.
 """
 
 import json
 import os
 import pathlib
+import sys
 import uuid
 
 import joblib
@@ -33,6 +48,8 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 # logica de carga.
 MODEL_DIR = pathlib.Path(os.environ.get("MODEL_PATH", str(RAIZ / "artifacts")))
 
+TAREAS_VALIDAS = ("regresion", "clasificacion")
+
 
 def cargar_artefacto():
     """Carga el pipeline y su contrato, y verifica que sean compatibles.
@@ -48,12 +65,32 @@ def cargar_artefacto():
     if not ruta_contrato.exists() or not ruta_pipeline.exists():
         raise FileNotFoundError(
             f"no encuentro el artefacto en {MODEL_DIR}.\n"
-            "    Corre el notebook notebooks/01-entrenar-y-exportar.ipynb "
-            "para generarlo."
+            "    Corre el notebook de entrenamiento para generarlo."
         )
 
     contrato = json.loads(ruta_contrato.read_text())
+
+    # El artefacto puede traer su propio modulo de columnas derivadas.
+    #
+    # joblib NO serializa el codigo de una funcion: guarda una REFERENCIA
+    # ('derivadas.derivar'). Si el pipeline lleva un FunctionTransformer, al
+    # cargarlo Python tiene que poder importar ese modulo o truena con
+    # "No module named 'derivadas'".
+    #
+    # Por eso el notebook exporta derivadas.py JUNTO al pipeline, y aqui se
+    # pone la carpeta del artefacto en el path antes de deserializar. El
+    # artefacto sigue siendo autocontenido: es una carpeta, no un archivo.
+    if str(MODEL_DIR) not in sys.path:
+        sys.path.insert(0, str(MODEL_DIR))
+
     pipeline = joblib.load(ruta_pipeline)
+
+    tarea = contrato.get("task", "regresion")
+    if tarea not in TAREAS_VALIDAS:
+        raise ValueError(
+            f"el contrato declara task='{tarea}', que no conozco. "
+            f"Valores validos: {', '.join(TAREAS_VALIDAS)}"
+        )
 
     entrenado_con = contrato["sklearn_version"]
     if entrenado_con != sklearn.__version__:
@@ -68,7 +105,7 @@ def cargar_artefacto():
     else:
         print(
             f"artefacto {contrato['model_version']} cargado "
-            f"(scikit-learn {entrenado_con})",
+            f"({tarea}, scikit-learn {entrenado_con})",
             flush=True,
         )
 
@@ -76,6 +113,53 @@ def cargar_artefacto():
 
 
 pipeline, contrato = cargar_artefacto()
+
+TAREA = contrato.get("task", "regresion")
+ES_CLASIFICACION = TAREA == "clasificacion"
+
+
+def clases_del_contrato():
+    """Las clases, en el MISMO orden en que el pipeline las devuelve.
+
+    Ese orden importa: predict_proba() entrega una fila de probabilidades sin
+    nombres, y lo unico que dice a que clase corresponde cada columna es el
+    orden de classes_. Si el contrato las declara en otro orden, las
+    probabilidades quedarian cambiadas de lugar y NADA fallaria: el servicio
+    respondaria 200 con la confianza de la clase equivocada.
+
+    Por eso se comparan las dos fuentes al arrancar en lugar de confiar en una.
+    """
+    del_contrato = contrato.get("classes")
+    del_pipeline = getattr(pipeline, "classes_", None)
+
+    if del_pipeline is None:
+        return del_contrato or []
+
+    # Los tipos de numpy no son serializables a JSON: se normalizan a tipos
+    # nativos con .tolist(), que convierte np.bool_ -> bool, np.int64 -> int.
+    nativas = del_pipeline.tolist()
+
+    if del_contrato is not None and list(del_contrato) != nativas:
+        print(
+            "\n*** AVISO: las clases del contrato no coinciden con las del "
+            "pipeline ***\n"
+            f"    metadata.json : {del_contrato}\n"
+            f"    pipeline      : {nativas}\n"
+            "    Se usan las del pipeline. Vuelve a exportar el artefacto.\n",
+            flush=True,
+        )
+    return nativas
+
+
+CLASES = clases_del_contrato() if ES_CLASIFICACION else []
+
+# Etiqueta legible por clase. Es opcional: si el contrato no la trae, se usa
+# el valor de la clase tal cual. El servicio nunca inventa nombres.
+ETIQUETAS = contrato.get("class_labels", {})
+
+
+def etiqueta_de(clase):
+    return ETIQUETAS.get(str(clase), str(clase))
 
 
 def estado():
@@ -87,6 +171,7 @@ def estado():
     """
     return {
         "model_version": contrato["model_version"],
+        "task": TAREA,
         "sklearn_version": sklearn.__version__,
         "artifact_hash": contrato["artifact_hash"],
     }
@@ -94,6 +179,15 @@ def estado():
 
 class InputInvalido(Exception):
     """El cliente mando algo que el contrato no acepta."""
+
+
+# Lo que se acepta como verdadero y como falso en una feature booleana.
+#
+# El formulario manda "true" (una cadena, porque HTML no tiene booleanos), el
+# test manda True, y un cliente en otro lenguaje puede mandar 1. Los tres
+# quieren decir lo mismo, y rechazar dos de ellos seria un mal producto.
+VERDADEROS = {True, 1, "true", "True", "TRUE", "1", "si", "yes"}
+FALSOS = {False, 0, "false", "False", "FALSE", "0", "no"}
 
 
 def validar(payload):
@@ -117,13 +211,15 @@ def validar(payload):
             raise InputInvalido(f"falta la feature '{nombre}'")
         valor = payload[nombre]
 
-        if f["type"] == "num":
+        tipo = f["type"]
+
+        if tipo == "num":
             try:
                 valor = float(valor)
             except (TypeError, ValueError):
                 raise InputInvalido(f"'{nombre}' debe ser un numero, llego {valor!r}")
-            # Fuera de rango NO es un error: es una casa legitima que el modelo
-            # no vio al entrenar. Rechazarla seria un mal producto; predecir sin
+            # Fuera de rango NO es un error: es un caso legitimo que el modelo
+            # no vio al entrenar. Rechazarlo seria un mal producto; predecir sin
             # avisar seria deshonesto. Se predice Y se avisa.
             if valor < f["min"] or valor > f["max"]:
                 advertencias.append(
@@ -131,7 +227,21 @@ def validar(payload):
                     f"entrenar ({f['min']:g} a {f['max']:g}); la prediccion es "
                     "menos confiable"
                 )
-        else:
+
+        elif tipo == "bool":
+            # Se normaliza a bool de Python. El pipeline espera un booleano,
+            # no la cadena "true": si llegara la cadena, el imputador la
+            # trataria como categoria y el modelo veria otra cosa.
+            if valor in VERDADEROS:
+                valor = True
+            elif valor in FALSOS:
+                valor = False
+            else:
+                raise InputInvalido(
+                    f"'{nombre}' debe ser verdadero o falso, llego {valor!r}"
+                )
+
+        else:  # cat
             if valor not in f["allowed"]:
                 raise InputInvalido(
                     f"'{nombre}' no acepta el valor {valor!r}. "
@@ -153,9 +263,60 @@ def model():
     return jsonify(contrato)
 
 
+def _predecir_regresion(entrada):
+    """Un numero, redondeado a dos decimales."""
+    # El pipeline recibe el DataFrame CRUDO. Toda la transformacion --y la
+    # inversion del logaritmo del target-- viaja dentro del artefacto.
+    return {"prediction": round(float(pipeline.predict(entrada)[0]), 2)}
+
+
+def _predecir_clasificacion(entrada):
+    """Una etiqueta, y la probabilidad de CADA clase.
+
+    Las probabilidades van en una LISTA de objetos y no en un diccionario
+    {clase: probabilidad} a proposito. Un diccionario JSON solo admite claves
+    de texto, y str(True) en Python es "True" mientras que String(true) en
+    JavaScript es "true": el frontend no podria volver a encontrar la clase que
+    gano. Una lista conserva el tipo nativo y ademas conserva el orden.
+
+    Un clasificador sin predict_proba --un SVC sin probability=True, por
+    ejemplo-- sigue funcionando: devuelve la etiqueta y una lista vacia.
+    """
+    etiqueta = pipeline.predict(entrada)[0]
+    # .item() convierte np.bool_ / np.int64 al tipo nativo de Python. Sin esto
+    # el servidor truena con "Object of type bool_ is not JSON serializable".
+    etiqueta = etiqueta.item() if hasattr(etiqueta, "item") else etiqueta
+
+    respuesta = {
+        "prediction": etiqueta,
+        "prediction_label": etiqueta_de(etiqueta),
+        "probabilities": [],
+        "confidence": None,
+    }
+
+    if not hasattr(pipeline, "predict_proba"):
+        return respuesta
+
+    fila = pipeline.predict_proba(entrada)[0]
+    respuesta["probabilities"] = [
+        {
+            "class": clase,
+            "label": etiqueta_de(clase),
+            "probability": round(float(p), 4),
+        }
+        for clase, p in zip(CLASES, fila)
+    ]
+    ganadora = next(
+        (p for p in respuesta["probabilities"] if p["class"] == etiqueta), None
+    )
+    if ganadora:
+        respuesta["confidence"] = ganadora["probability"]
+    return respuesta
+
+
 @bp.post("/api/predict")
 def predict():
-    """Una casa entra, un precio sale."""
+    """Una fila entra, una prediccion sale."""
     try:
         entrada, advertencias = validar(request.get_json(silent=True))
     except InputInvalido as e:
@@ -163,9 +324,11 @@ def predict():
         return jsonify({"error": str(e)}), 400
 
     try:
-        # El pipeline recibe el DataFrame CRUDO. Toda la transformacion --y la
-        # inversion del logaritmo del target-- viaja dentro del artefacto.
-        precio = float(pipeline.predict(entrada)[0])
+        nucleo = (
+            _predecir_clasificacion(entrada)
+            if ES_CLASIFICACION
+            else _predecir_regresion(entrada)
+        )
     except Exception:
         # 500: fallamos nosotros. El detalle va a los registros del servidor, no
         # a la respuesta: al cliente no se le entrega el interior de la casa.
@@ -174,25 +337,26 @@ def predict():
 
     respuesta = {
         "prediction_id": str(uuid.uuid4()),
-        "prediction": round(precio, 2),
         "model_version": contrato["model_version"],
+        "task": TAREA,
         "warnings": advertencias,
+        **nucleo,
     }
 
-    # El historial es de la sesion 3. El import va AQUI dentro y no arriba a
-    # proposito: si s3_producto.py no existe todavia --porque no has traido el
+    # El historial es de la sesion 4. El import va AQUI dentro y no arriba a
+    # proposito: si s4_producto.py no existe todavia --porque no has traido el
     # material de esa sesion-- predecir sigue funcionando igual.
     try:
-        import s3_producto
+        import s4_producto
 
-        s3_producto.registrar_prediccion(
+        s4_producto.registrar_prediccion(
             respuesta["prediction_id"],
             entrada.iloc[0].to_dict(),
             respuesta["prediction"],
             contrato["model_version"],
         )
     except ImportError:
-        pass  # la sesion 3 no esta; no hay donde registrar
+        pass  # la sesion 4 no esta; no hay donde registrar
     except Exception:  # noqa: BLE001
         # Que falle el registro no puede costarle la prediccion al usuario.
         current_app.logger.exception("no se pudo registrar la prediccion")

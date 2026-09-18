@@ -1,16 +1,29 @@
 {
   "input": {
-    "GrLivArea": 1144,
-    "OverallQual": 5,
-    "YearBuilt": 1963,
-    "TotalBsmtSF": 1144,
-    "GarageCars": 1,
-    "FullBath": 1,
-    "BedroomAbvGr": 3,
-    "LotArea": 9204,
-    "Neighborhood": "NAmes",
-    "KitchenQual": "TA"
+    "Age": 9.0,
+    "RoomService": 0.0,
+    "FoodCourt": 0.0,
+    "ShoppingMall": 0.0,
+    "Spa": 0.0,
+    "VRDeck": 0.0,
+    "Cabin_Num": 82.0,
+    "GroupSize": 6.0,
+    "HomePlanet": "Earth",
+    "Destination": "TRAPPIST-1e",
+    "Cabin_Deck": "E",
+    "Cabin_Side": "P",
+    "CryoSleep": false
   },
-  "prediction": 140637.5,
+  "prediction": 1,
+  "probabilities": [
+    {
+      "class": 0,
+      "probability": 0.2903
+    },
+    {
+      "class": 1,
+      "probability": 0.7097
+    }
+  ],
   "model_version": "1.0.0"
 }

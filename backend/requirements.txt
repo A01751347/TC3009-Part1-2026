@@ -29,3 +29,15 @@ joblib==1.4.2
 # Servidor de produccion, se usa dentro del contenedor en la sesion 4.
 # El servidor de desarrollo de Flask no esta hecho para produccion.
 gunicorn==22.0.0
+
+# --- Agregado para el reto (Spaceship Titanic) -----------------------------
+#
+# El artefacto de clasificacion lleva un XGBClassifier DENTRO del pipeline.
+# joblib guarda una referencia a la clase, no su codigo: sin xgboost instalado,
+# el servicio truena al arrancar con "No module named 'xgboost'" y el error no
+# menciona al modelo por ningun lado.
+#
+# OJO: este archivo es [DEL CURSO] en setup/archivos-del-curso.txt, asi que
+# './setup/run actualizar N' lo sobreescribe con la version del curso y borra
+# esta linea. Si despues de actualizar el servicio no arranca, es esto.
+xgboost==2.1.3

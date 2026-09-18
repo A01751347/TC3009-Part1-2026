@@ -19,6 +19,8 @@ const EJE = "#c3c2b7";
 const LINEA = "#e1e0d9";
 const TINTA_APAGADA = "#898781";
 
+const miles = (n) => new Intl.NumberFormat("es-MX").format(n);
+
 const pesos = (n) =>
   new Intl.NumberFormat("es-MX", {
     style: "currency",
@@ -26,28 +28,37 @@ const pesos = (n) =>
     maximumFractionDigits: 0,
   }).format(n);
 
-const miles = (n) => new Intl.NumberFormat("es-MX").format(n);
+/** El formato del eje lo dice el backend, no esta vista.
+ *
+ * El mismo componente dibuja precios medios y tasas de transportados. Lo unico
+ * que cambia es como se escribe el numero, y eso viaja en la respuesta
+ * (value_format) junto con los datos.
+ */
+function formateador(formato) {
+  if (formato === "porcentaje") {
+    return {
+      completo: (v) => `${(v * 100).toFixed(1)}%`,
+      eje: (v) => `${Math.round(v * 100)}%`,
+    };
+  }
+  if (formato === "moneda") {
+    return { completo: pesos, eje: (v) => `${Math.round(v / 1000)}k` };
+  }
+  return { completo: miles, eje: miles };
+}
 
-/** Tooltip compartido por las dos graficas. */
-function TooltipPrecio({ active, payload, label, sufijo = "" }) {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div className="tooltip">
-      <div className="t-titulo">
-        {label}
-        {sufijo}
-      </div>
-      <div className="t-linea">Precio medio: {pesos(d.mean_price)}</div>
-      <div className="t-linea">{miles(d.count)} casas</div>
-    </div>
-  );
+/** Una celda cruda del dataset, escrita para leerse. */
+function celda(v) {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "Sí" : "No";
+  if (typeof v === "number") return miles(v);
+  return String(v);
 }
 
 export default function Tablero() {
   const [stats, setStats] = useState(null);
   const [filas, setFilas] = useState(null);
-  const [colonia, setColonia] = useState("");
+  const [scope, setScope] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
 
@@ -59,7 +70,7 @@ export default function Tablero() {
     setCargando(true);
     setError(null);
 
-    Promise.all([getStats(colonia), getData(colonia, 20)])
+    Promise.all([getStats(scope), getData(scope, 20)])
       .then(([s, d]) => {
         if (cancelado) return;
         setStats(s);
@@ -71,19 +82,17 @@ export default function Tablero() {
     return () => {
       cancelado = true;
     };
-  }, [colonia]);
+  }, [scope]);
 
   if (error) {
     return (
-      <>
-        <div className="estado error">
-          <p>No se pudo hablar con la API: {error}</p>
-          <p>
-            Revisa que el backend este corriendo en el puerto 8080 y que la
-            consola del navegador no muestre un error de CORS.
-          </p>
-        </div>
-      </>
+      <div className="estado error">
+        <p>No se pudo hablar con la API: {error}</p>
+        <p>
+          Revisa que el backend esté corriendo en el puerto 8080 y que la
+          consola del navegador no muestre un error de CORS.
+        </p>
+      </div>
     );
   }
 
@@ -91,73 +100,75 @@ export default function Tablero() {
     return <div className="estado">Cargando datos...</div>;
   }
 
-  const colonias = stats.by_neighborhood.map((d) => d.neighborhood).sort();
-  const alcance = stats.scope ? `la colonia ${stats.scope}` : "las 1,460 casas";
+  const L = stats.labels ?? {};
+  const fmt = formateador(stats.value_format);
+  const grupos = stats.by_group.map((d) => String(d.group)).sort();
+  const registro = L.registro ?? "registros";
+  const alcance = stats.scope
+    ? `${L.group ?? stats.group_by} = ${stats.scope}`
+    : `los ${miles(stats.by_group.reduce((a, d) => a + d.count, 0))} ${registro}`;
+
+  const TooltipValor = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="tooltip">
+        <div className="t-titulo">{label}</div>
+        <div className="t-linea">
+          {L.value ?? "Valor"}: {fmt.completo(d.value)}
+        </div>
+        <div className="t-linea">
+          {miles(d.count)} {registro}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
       <p className="subtitulo-vista">
-        {miles(stats.count)} registros en el alcance actual
+        {stats.dataset} &middot; {miles(stats.count)} {registro} en el alcance
+        actual
       </p>
 
       {/* Los filtros van en una sola fila, arriba de todo lo que afectan. */}
       <div className="filtros">
-        <label htmlFor="colonia">Colonia</label>
+        <label htmlFor="scope">{L.group ?? stats.group_by}</label>
         <select
-          id="colonia"
-          value={colonia}
-          onChange={(e) => setColonia(e.target.value)}
+          id="scope"
+          value={scope}
+          onChange={(e) => setScope(e.target.value)}
         >
-          <option value="">Todas las colonias</option>
-          {colonias.map((c) => (
-            <option key={c} value={c}>
-              {c}
+          <option value="">Todos</option>
+          {grupos.map((g) => (
+            <option key={g} value={g}>
+              {g}
             </option>
           ))}
         </select>
-        {colonia && (
-          <button onClick={() => setColonia("")}>Quitar filtro</button>
-        )}
+        {scope && <button onClick={() => setScope("")}>Quitar filtro</button>}
       </div>
 
       {/* Cifras de encabezado: son numeros, no una grafica. */}
-      {stats.target ? (
-        <div className="tarjetas">
-          <div className="tarjeta">
-            <div className="etiqueta">Casas</div>
-            <div className="valor">{miles(stats.count)}</div>
-          </div>
-          <div className="tarjeta">
-            <div className="etiqueta">Precio medio</div>
-            <div className="valor">{pesos(stats.target.mean)}</div>
-          </div>
-          <div className="tarjeta">
-            <div className="etiqueta">Mediana</div>
-            <div className="valor">{pesos(stats.target.median)}</div>
-          </div>
-          <div className="tarjeta">
-            <div className="etiqueta">Maximo</div>
-            <div className="valor">{pesos(stats.target.max)}</div>
-          </div>
-        </div>
-      ) : (
-        <div className="panel vacio">
-          No hay registros para {stats.scope}.
-        </div>
-      )}
+      <Encabezado stats={stats} registro={registro} fmt={fmt} />
 
-      {/* Grafica 1: comparacion entre colonias.
-          Se mantiene siempre completa; la seleccionada se resalta en lugar de
-          esconder las demas. Filtrar no siempre significa ocultar. */}
+      {/* Grafica 1: comparacion entre grupos.
+          Se mantiene siempre completa; el seleccionado se resalta en lugar de
+          esconder los demas. Filtrar no siempre significa ocultar. */}
       <div className="panel">
-        <h2>Precio medio por colonia</h2>
+        <h2>
+          {L.value ?? "Valor"} por {(L.group ?? stats.group_by).toLowerCase()}
+        </h2>
         <p className="subtitulo">
-          Las 25 colonias, ordenadas de mayor a menor.
-          {stats.scope && ` ${stats.scope} aparece resaltada.`}
+          {stats.by_group.length} grupos, ordenados de mayor a menor.
+          {stats.scope && ` ${stats.scope} aparece resaltado.`}
         </p>
-        <ResponsiveContainer width="100%" height={520}>
+        <ResponsiveContainer
+          width="100%"
+          height={Math.max(220, stats.by_group.length * 22 + 60)}
+        >
           <BarChart
-            data={stats.by_neighborhood}
+            data={stats.by_group}
             layout="vertical"
             margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
             barCategoryGap={3}
@@ -165,36 +176,32 @@ export default function Tablero() {
             <CartesianGrid horizontal={false} stroke={LINEA} />
             <XAxis
               type="number"
-              tickFormatter={(v) => `${Math.round(v / 1000)}k`}
+              tickFormatter={fmt.eje}
               stroke={EJE}
               tick={{ fill: TINTA_APAGADA, fontSize: 12 }}
               tickLine={false}
             />
             <YAxis
               type="category"
-              dataKey="neighborhood"
-              width={86}
+              dataKey="group"
+              width={92}
               interval={0}
               stroke={EJE}
               tick={{ fill: TINTA_APAGADA, fontSize: 12 }}
               tickLine={false}
             />
             <Tooltip
-              content={<TooltipPrecio />}
+              content={<TooltipValor />}
               cursor={{ fill: "rgba(11,11,11,0.04)" }}
             />
             {/* Sin animacion de entrada: en un tablero es ruido, y ademas hace
                 que la grafica dependa del tiempo para verse completa. */}
-            <Bar
-              dataKey="mean_price"
-              radius={[0, 4, 4, 0]}
-              isAnimationActive={false}
-            >
-              {stats.by_neighborhood.map((d) => (
+            <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false}>
+              {stats.by_group.map((d) => (
                 <Cell
-                  key={d.neighborhood}
+                  key={String(d.group)}
                   fill={
-                    !stats.scope || stats.scope === d.neighborhood
+                    !stats.scope || stats.scope === String(d.group)
                       ? SERIE
                       : SERIE_APAGADA
                   }
@@ -205,42 +212,43 @@ export default function Tablero() {
         </ResponsiveContainer>
       </div>
 
-      {/* Grafica 2: esta si refleja el filtro, porque la calidad dentro de una
-          colonia es una pregunta con sentido. */}
+      {/* Grafica 2: esta si refleja el filtro, porque el corte secundario
+          dentro de un grupo es una pregunta con sentido. */}
       <div className="panel">
-        <h2>Precio medio por calidad general</h2>
-        <p className="subtitulo">
-          Escala de 1 a 10, sobre {alcance}.
-        </p>
-        {stats.by_overall_qual.length === 0 ? (
+        <h2>
+          {L.value ?? "Valor"} por{" "}
+          {(L.secondary ?? stats.secondary_by).toLowerCase()}
+        </h2>
+        <p className="subtitulo">Sobre {alcance}.</p>
+        {stats.by_secondary.length === 0 ? (
           <div className="vacio">Sin datos para este filtro.</div>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
             <BarChart
-              data={stats.by_overall_qual}
+              data={stats.by_secondary}
               margin={{ top: 4, right: 8, bottom: 4, left: 8 }}
               barCategoryGap={3}
               maxBarSize={52}
             >
               <CartesianGrid vertical={false} stroke={LINEA} />
               <XAxis
-                dataKey="overall_qual"
+                dataKey="group"
                 stroke={EJE}
                 tick={{ fill: TINTA_APAGADA, fontSize: 12 }}
                 tickLine={false}
               />
               <YAxis
-                tickFormatter={(v) => `${Math.round(v / 1000)}k`}
+                tickFormatter={fmt.eje}
                 stroke={EJE}
                 tick={{ fill: TINTA_APAGADA, fontSize: 12 }}
                 tickLine={false}
               />
               <Tooltip
-                content={<TooltipPrecio sufijo=" de calidad" />}
+                content={<TooltipValor />}
                 cursor={{ fill: "rgba(11,11,11,0.04)" }}
               />
               <Bar
-                dataKey="mean_price"
+                dataKey="value"
                 fill={SERIE}
                 radius={[4, 4, 0, 0]}
                 isAnimationActive={false}
@@ -251,45 +259,36 @@ export default function Tablero() {
       </div>
 
       {/* La tabla es tambien la via de acceso accesible a lo que dicen las
-          graficas: los mismos datos, en texto. */}
+          graficas: los mismos datos, en texto. Las columnas las manda el
+          backend, asi que cambiar de dataset no se edita aqui. */}
       <div className="panel">
         <h2>Registros</h2>
         <p className="subtitulo">
-          {filas.count} de {miles(filas.total_matching)} casas que cumplen el
-          filtro.
+          {filas.count} de {miles(filas.total_matching)} {registro} que cumplen
+          el filtro.
         </p>
         {filas.rows.length === 0 ? (
-          <div className="vacio">Ninguna casa cumple este filtro.</div>
+          <div className="vacio">Ningún registro cumple este filtro.</div>
         ) : (
           <div className="scroll-x">
             <table>
               <thead>
                 <tr>
-                  <th className="txt">Id</th>
-                  <th className="txt">Colonia</th>
-                  <th>Superficie</th>
-                  <th>Calidad</th>
-                  <th>Año</th>
-                  <th>Recámaras</th>
-                  <th>Baños</th>
-                  <th>Cochera</th>
-                  <th className="txt">Cocina</th>
-                  <th>Precio</th>
+                  {filas.columns.map((c) => (
+                    <th key={c} className={c === filas.target ? undefined : "txt"}>
+                      {c}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {filas.rows.map((f) => (
-                  <tr key={f.Id}>
-                    <td className="txt">{f.Id}</td>
-                    <td className="txt">{f.Neighborhood}</td>
-                    <td>{miles(f.GrLivArea)}</td>
-                    <td>{f.OverallQual}</td>
-                    <td>{f.YearBuilt}</td>
-                    <td>{f.BedroomAbvGr}</td>
-                    <td>{f.FullBath}</td>
-                    <td>{f.GarageCars}</td>
-                    <td className="txt">{f.KitchenQual}</td>
-                    <td>{pesos(f.SalePrice)}</td>
+                {filas.rows.map((f, i) => (
+                  <tr key={f[filas.columns[0]] ?? i}>
+                    {filas.columns.map((c) => (
+                      <td key={c} className="txt">
+                        {celda(f[c])}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -298,5 +297,62 @@ export default function Tablero() {
         )}
       </div>
     </>
+  );
+}
+
+/** Las cifras de arriba. Cambian de forma segun el tipo de target.
+ *
+ * Un target numerico se resume con min/media/mediana/max. Uno categorico con
+ * su distribucion de clases, que es la primera pregunta de cualquier
+ * clasificador: si el 95% es de una sola clase, un 95% de accuracy no dice
+ * nada.
+ */
+function Encabezado({ stats, registro, fmt }) {
+  if (!stats.target) {
+    return (
+      <div className="panel vacio">
+        No hay {registro} para {stats.scope}.
+      </div>
+    );
+  }
+
+  const t = stats.target;
+
+  if (t.kind === "categorico") {
+    return (
+      <div className="tarjetas">
+        <div className="tarjeta">
+          <div className="etiqueta">{registro}</div>
+          <div className="valor">{miles(stats.count)}</div>
+        </div>
+        {t.distribution.map((c) => (
+          <div className="tarjeta" key={String(c.class)}>
+            <div className="etiqueta">{c.label}</div>
+            <div className="valor">{(c.share * 100).toFixed(1)}%</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="tarjetas">
+      <div className="tarjeta">
+        <div className="etiqueta">{registro}</div>
+        <div className="valor">{miles(stats.count)}</div>
+      </div>
+      <div className="tarjeta">
+        <div className="etiqueta">Promedio</div>
+        <div className="valor">{fmt.completo(t.mean)}</div>
+      </div>
+      <div className="tarjeta">
+        <div className="etiqueta">Mediana</div>
+        <div className="valor">{fmt.completo(t.median)}</div>
+      </div>
+      <div className="tarjeta">
+        <div className="etiqueta">Máximo</div>
+        <div className="valor">{fmt.completo(t.max)}</div>
+      </div>
+    </div>
   );
 }

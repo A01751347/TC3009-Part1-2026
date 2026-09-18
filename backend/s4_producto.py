@@ -1,17 +1,18 @@
-"""Sesion 3: memoria y palabras.
+"""Sesion 4: memoria y palabras.
 
 El historial de predicciones y la explicacion en lenguaje natural.
 El contrato que implementa este archivo esta en docs/api-contrato.md.
 """
 
 import json
+import os
 import pathlib
 import sqlite3
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
-bp = Blueprint("s3_producto", __name__)
+bp = Blueprint("s4_producto", __name__)
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
@@ -19,7 +20,11 @@ RAIZ = pathlib.Path(__file__).resolve().parent.parent
 #           Alcanza para un taller y se lee de un vistazo.
 #           Parte 2 -> un motor de verdad, migraciones, y el historial deja de
 #           vivir en el disco de una instancia que puede desaparecer.
-DB_PATH = RAIZ / "predicciones.sqlite"
+#
+# La ruta se lee del entorno --igual que DATA_PATH y MODEL_PATH-- porque las
+# pruebas corren contra una base temporal. Sin esto, tests/test_registro.py
+# escribiria sus 12 predicciones de prueba en TU historial.
+DB_PATH = pathlib.Path(os.environ.get("DB_PATH", str(RAIZ / "predicciones.sqlite")))
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 500
@@ -37,6 +42,15 @@ def conectar():
     return con
 
 
+# ATAJO-P1: la prediccion se guarda como JSON en una columna de texto.
+#           Un modelo de regresion predice un numero y uno de clasificacion una
+#           etiqueta --que puede ser booleana o una cadena--; una columna REAL
+#           no puede con los dos, y convertiria True en 1.0 sin avisar.
+#           Guardar el JSON conserva el tipo y hace que el historial sirva para
+#           cualquier modelo.
+#           Parte 2 -> una columna por tipo, o un motor con tipos de verdad.
+
+
 def crear_tabla():
     with conectar() as con:
         con.execute(
@@ -45,7 +59,7 @@ def crear_tabla():
                 prediction_id TEXT PRIMARY KEY,
                 created_at    TEXT NOT NULL,
                 model_version TEXT NOT NULL,
-                prediction    REAL NOT NULL,
+                prediction    TEXT NOT NULL,
                 input_json    TEXT NOT NULL
             )
             """
@@ -71,10 +85,25 @@ def registrar_prediccion(prediction_id, entrada, prediccion, model_version):
                 prediction_id,
                 datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 model_version,
-                prediccion,
-                json.dumps(entrada),
+                json.dumps(prediccion),
+                json.dumps(entrada, default=str),
             ),
         )
+
+
+def _leer_prediccion(valor):
+    """Devuelve la prediccion con el tipo que tenia al guardarse.
+
+    Las filas escritas antes de que esta columna fuera JSON traen un numero
+    crudo en lugar de texto. Se aceptan las dos formas en lugar de pedir que
+    borres tu historial.
+    """
+    if isinstance(valor, (int, float)):
+        return valor
+    try:
+        return json.loads(valor)
+    except (TypeError, ValueError):
+        return valor
 
 
 def estado():
@@ -114,7 +143,7 @@ def history():
                     "prediction_id": f["prediction_id"],
                     "created_at": f["created_at"],
                     "model_version": f["model_version"],
-                    "prediction": f["prediction"],
+                    "prediction": _leer_prediccion(f["prediction"]),
                     "input": json.loads(f["input_json"]),
                 }
                 for f in filas
@@ -132,18 +161,23 @@ def explain():
     tiene en pantalla.
     """
     cuerpo = request.get_json(silent=True)
+    esperado = "se esperaba {input: {...}, prediction: <numero o etiqueta>}"
+
     if not isinstance(cuerpo, dict):
-        return jsonify({"error": "se esperaba {input: {...}, prediction: numero}"}), 400
+        return jsonify({"error": esperado}), 400
 
     entrada = cuerpo.get("input")
     prediccion = cuerpo.get("prediction")
 
-    if not isinstance(entrada, dict) or not isinstance(prediccion, (int, float)):
-        return jsonify({"error": "se esperaba {input: {...}, prediction: numero}"}), 400
+    # La prediccion ya no tiene que ser un numero: un clasificador devuelve una
+    # etiqueta, que puede ser booleana o una cadena. Lo que si se exige es que
+    # venga --None significa que el cliente no mando nada.
+    if not isinstance(entrada, dict) or prediccion is None:
+        return jsonify({"error": esperado}), 400
 
     return jsonify(
         {
-            "explanation": redactar(entrada, float(prediccion)),
+            "explanation": redactar(entrada, prediccion),
             # Quien redacto. Hoy siempre 'plantilla'. Esta en el contrato desde
             # el principio para que cambiarlo por un modelo de lenguaje no
             # rompa a ningun consumidor.
@@ -157,6 +191,10 @@ def redactar(entrada, prediccion):
 
     Las importancias salen de metadata.json, asi que la explicacion habla de lo
     que de verdad mueve a ESTE modelo y no de una lista elegida a mano.
+
+    La frase cambia segun el tipo de problema --un numero estimado o una clase
+    predicha-- pero el razonamiento es el mismo: las tres features de mayor
+    importancia, comparadas contra lo habitual del entrenamiento.
     """
     # Import local: si la sesion 2 no esta, explicar sigue funcionando con una
     # frase mas corta en lugar de tumbar el modulo entero al importarlo.
@@ -164,26 +202,44 @@ def redactar(entrada, prediccion):
         import s2_modelo
 
         metadata = s2_modelo.contrato
+        etiqueta_de = s2_modelo.etiqueta_de
     except Exception:  # noqa: BLE001
         metadata = None
+        etiqueta_de = str
+
+    encabezado = _encabezado(metadata, prediccion, etiqueta_de)
 
     if not metadata:
-        return f"El modelo estima {prediccion:,.0f} para esta casa."
+        return encabezado
 
     importancias = metadata.get("feature_importances", {})
     contrato = {f["name"]: f for f in metadata["features"]}
 
-    # Las tres que mas pesan, de mayor a menor.
-    top = sorted(importancias.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    # Se miran las OCHO que mas pesan, no las tres, y despues se filtra.
+    #
+    # La razon: una feature en la que este caso es igual a la mediana del
+    # entrenamiento no explica nada. En este dataset la mediana de casi todas
+    # las cuentas de consumo es 0 --la mayoria de los pasajeros no gasta-- asi
+    # que quedarse con las tres primeras produce "RoomService en lo habitual
+    # (0); Spa en lo habitual (0); VRDeck en lo habitual (0)", que es una frase
+    # que ocupa espacio y no dice nada.
+    #
+    # Se prefieren las que DISTINGUEN a este caso, en orden de importancia. Si
+    # no hay ninguna --un caso promedio en todo-- se usan las de mayor peso
+    # aunque sean tibias, porque quedarse sin explicacion es peor.
+    top = sorted(importancias.items(), key=lambda kv: kv[1], reverse=True)[:8]
 
-    piezas = []
+    distintivas = []
+    tibias = []
+
     for nombre, _ in top:
         if nombre not in entrada or nombre not in contrato:
             continue
         f = contrato[nombre]
         valor = entrada[nombre]
+        tipo = f["type"]
 
-        if f["type"] == "num":
+        if tipo == "num":
             try:
                 v = float(valor)
             except (TypeError, ValueError):
@@ -192,18 +248,34 @@ def redactar(entrada, prediccion):
             # informa, decir "por debajo de lo habitual" si.
             mediana = f["median"]
             if v > mediana:
-                piezas.append(f"{nombre} por encima de lo habitual ({v:g})")
+                distintivas.append(f"{nombre} por encima de lo habitual ({v:g})")
             elif v < mediana:
-                piezas.append(f"{nombre} por debajo de lo habitual ({v:g})")
+                distintivas.append(f"{nombre} por debajo de lo habitual ({v:g})")
             else:
-                piezas.append(f"{nombre} en lo habitual ({v:g})")
+                tibias.append(f"{nombre} en lo habitual ({v:g})")
+        elif tipo == "bool":
+            # Un booleano siempre distingue: no hay un "valor habitual" que
+            # vuelva la frase vacia.
+            distintivas.append(f"{nombre} {'si' if valor else 'no'}")
         else:
-            piezas.append(f"{nombre} = {valor}")
+            distintivas.append(f"{nombre} = {valor}")
+
+    piezas = (distintivas + tibias)[:3]
 
     if not piezas:
-        return f"El modelo estima {prediccion:,.0f} para esta casa."
+        return encabezado
 
-    return (
-        f"El modelo estima {prediccion:,.0f} para esta casa. "
-        f"Lo que mas pesa en esa estimacion es {'; '.join(piezas)}."
-    )
+    return f"{encabezado} Lo que mas pesa en esa decision es {'; '.join(piezas)}."
+
+
+def _encabezado(metadata, prediccion, etiqueta_de):
+    """La primera frase: lo que el modelo decidio, en su unidad."""
+    tarea = (metadata or {}).get("task", "regresion")
+
+    if tarea == "clasificacion":
+        return f"El modelo clasifica este caso como {etiqueta_de(prediccion)}."
+
+    try:
+        return f"El modelo estima {float(prediccion):,.0f} para este caso."
+    except (TypeError, ValueError):
+        return f"El modelo predice {prediccion}."
