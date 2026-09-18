@@ -98,6 +98,7 @@ function MarcaOrbital() {
 function App() {
   const [activa, setActiva] = useState(0);
   const [salud, setSalud] = useState(null);
+  const [contextoVista, setContextoVista] = useState(null);
   const [tema, cambiarTema] = useTema();
 
   useEffect(() => {
@@ -120,6 +121,14 @@ function App() {
 
   const Actual = vistas[activa].Componente;
   const degradado = salud && salud.status !== "ok";
+
+  function navegarA(titulo, contexto = null) {
+    const indice = vistas.findIndex((vista) => vista.titulo === titulo);
+    if (indice < 0) return;
+    setContextoVista(contexto);
+    setActiva(indice);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <div className="app">
@@ -160,7 +169,7 @@ function App() {
             <button
               key={vista.titulo}
               className={i === activa ? "activa" : ""}
-              onClick={() => setActiva(i)}
+              onClick={() => navegarA(vista.titulo)}
               aria-current={i === activa ? "page" : undefined}
             >
               <span className="nav-glifo">
@@ -177,7 +186,11 @@ function App() {
 
       <main className="contenido" data-vista={vistas[activa].titulo}>
         <div className="contenido-marco">
-          <Actual />
+          <Actual
+            contextoNavegacion={contextoVista}
+            onNavigate={navegarA}
+            onContextoConsumido={() => setContextoVista(null)}
+          />
         </div>
         <footer className="pie-app">
           <span>Orbit ML Console</span>

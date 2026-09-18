@@ -22,10 +22,12 @@ const celda = (v) => {
   return String(v);
 };
 
-export default function Historial() {
+export default function Historial({ onNavigate }) {
   const [datos, setDatos] = useState(null);
   const [contrato, setContrato] = useState(null);
   const [error, setError] = useState(null);
+  const [filtro, setFiltro] = useState("todos");
+  const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
     getHistory(50).then(setDatos).catch((e) => setError(e.message));
@@ -73,6 +75,23 @@ export default function Historial() {
       return (contrato?.class_labels ?? {})[String(v)] ?? String(v);
     return fmt.completo(v);
   };
+  const filasVisibles = (() => {
+    const texto = busqueda.trim().toLowerCase();
+    return datos.rows.filter((fila) => {
+      const coincideClase =
+        filtro === "todos" || String(fila.prediction) === String(filtro);
+      const coincideTexto =
+        !texto ||
+        JSON.stringify(fila.input).toLowerCase().includes(texto) ||
+        escribir(fila.prediction).toLowerCase().includes(texto) ||
+        fila.prediction_id.toLowerCase().includes(texto);
+      return coincideClase && coincideTexto;
+    });
+  })();
+
+  const clasesDisponibles = [
+    ...new Set(datos.rows.map((fila) => String(fila.prediction))),
+  ];
 
   return (
     <>
@@ -93,10 +112,13 @@ export default function Historial() {
             <div>
               <h2>Predicciones recientes</h2>
               <p className="sub">
-                {datos.count} registradas · se muestran las columnas de mayor
-                peso en el modelo
+                {filasVisibles.length} de {datos.count} visibles · se muestran
+                las variables de mayor peso en el modelo
               </p>
             </div>
+            <button className="b" type="button" onClick={() => onNavigate?.("Predecir")}>
+              + Nueva predicción
+            </button>
           </header>
           <div className="cuerpo">
             {datos.rows.length === 0 ? (
@@ -105,36 +127,72 @@ export default function Historial() {
                 va a aparecer aquí.
               </div>
             ) : (
-              <div className="tabla-envoltura">
-                <table>
-                  <thead>
-                    <tr>
-                      <th className="txt">Cuándo</th>
-                      {columnas.map((c) => (
-                        <th key={c} className={numericas.has(c) ? undefined : "txt"} title={c}>
-                          {etiquetaDe(c)}
-                        </th>
-                      ))}
-                      <th className="txt">Predicción</th>
-                      <th className="txt">Modelo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {datos.rows.map((f) => (
-                      <tr key={f.prediction_id}>
-                        <td className="txt tenue">{cuando(f.created_at)}</td>
-                        {columnas.map((c) => (
-                          <td key={c} className={numericas.has(c) ? undefined : "txt"}>
-                            {celda(f.input[c])}
-                          </td>
-                        ))}
-                        <td className="txt">{escribir(f.prediction)}</td>
-                        <td className="txt mono">{f.model_version}</td>
-                      </tr>
+              <>
+                <div className="historial-filtros">
+                  <label className="busqueda-historial">
+                    <span className="sr-only">Buscar en el historial</span>
+                    <input
+                      type="search"
+                      value={busqueda}
+                      placeholder="Buscar planeta, destino, resultado…"
+                      onChange={(e) => setBusqueda(e.target.value)}
+                    />
+                  </label>
+                  <div className="filtros-clase" aria-label="Filtrar por resultado">
+                    <button className={filtro === "todos" ? "activo" : ""} onClick={() => setFiltro("todos")}>Todos</button>
+                    {clasesDisponibles.map((clase) => (
+                      <button key={clase} className={filtro === clase ? "activo" : ""} onClick={() => setFiltro(clase)}>
+                        {escribir(clase)}
+                      </button>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                </div>
+
+                {filasVisibles.length === 0 ? (
+                  <div className="vacio">Ninguna predicción coincide con estos filtros.</div>
+                ) : (
+                  <div className="tabla-envoltura">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th className="txt">Cuándo</th>
+                          {columnas.map((c) => (
+                            <th key={c} className={numericas.has(c) ? undefined : "txt"} title={c}>
+                              {etiquetaDe(c)}
+                            </th>
+                          ))}
+                          <th className="txt">Predicción</th>
+                          <th className="txt">Modelo</th>
+                          <th aria-label="Acciones" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filasVisibles.map((f) => (
+                          <tr key={f.prediction_id}>
+                            <td className="txt tenue">{cuando(f.created_at)}</td>
+                            {columnas.map((c) => (
+                              <td key={c} className={numericas.has(c) ? undefined : "txt"}>
+                                {celda(f.input[c])}
+                              </td>
+                            ))}
+                            <td className="txt"><span className="resultado-tabla">{escribir(f.prediction)}</span></td>
+                            <td className="txt mono">{f.model_version}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="repetir-prediccion"
+                                onClick={() => onNavigate?.("Predecir", { input: f.input, predictionId: f.prediction_id })}
+                              >
+                                Reutilizar →
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </section>

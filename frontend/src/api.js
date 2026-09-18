@@ -57,4 +57,6 @@ export const getModel = () => get("/api/model");
 export const predecir = (entrada) => post("/api/predict", entrada);
 export const explicar = (entrada, prediccion) =>
   post("/api/explain", { input: entrada, prediction: prediccion });
+export const getSimilares = (entrada, limit = 12) =>
+  post("/api/similar", { input: entrada, limit });
 export const getHistory = (limit = 50) => get("/api/history", { limit });

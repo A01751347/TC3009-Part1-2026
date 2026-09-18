@@ -1,7 +1,7 @@
 export const meta = { titulo: "Predecir", orden: 2, glifo: "◈" };
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { explicar, getModel, getStats, predecir } from "../api.js";
+import { explicar, getModel, getSimilares, getStats, predecir } from "../api.js";
 import { claseSerie, formateador, miles, pct } from "../viz.js";
 
 const etiquetaDeClase = (clase, mapa) =>
@@ -125,7 +125,7 @@ function seccionesDelFormulario(contrato) {
   ].filter((seccion) => seccion.campos.length > 0);
 }
 
-export default function Predecir() {
+export default function Predecir({ contextoNavegacion, onContextoConsumido }) {
   const [contrato, setContrato] = useState(null);
   const [valores, setValores] = useState({});
   const [errores, setErrores] = useState({});
@@ -135,6 +135,8 @@ export default function Predecir() {
   const [entradaResultado, setEntradaResultado] = useState(null);
   const [explicacion, setExplicacion] = useState(null);
   const [referencia, setReferencia] = useState(null);
+  const [similares, setSimilares] = useState(null);
+  const [escenarios, setEscenarios] = useState([]);
   const [avisoFormulario, setAvisoFormulario] = useState(null);
   const [error, setError] = useState(null);
   const solicitudActual = useRef(0);
@@ -149,6 +151,20 @@ export default function Predecir() {
         setError(`No se pudo leer el contrato del modelo: ${e.message}`),
       );
   }, []);
+
+  useEffect(() => {
+    if (!contrato || !contextoNavegacion?.input) return;
+    const preparados = {};
+    for (const f of contrato.features) {
+      const valor = contextoNavegacion.input[f.name];
+      preparados[f.name] = f.type === "bool" ? booleanoComoTexto(valor) : valor;
+    }
+    setValores(preparados);
+    setErrores({});
+    setError(null);
+    setAvisoFormulario("Recuperamos esta entrada desde el historial. Revísala y genera una nueva predicción para compararla.");
+    onContextoConsumido?.();
+  }, [contrato, contextoNavegacion, onContextoConsumido]);
 
   const secciones = useMemo(
     () => (contrato ? seccionesDelFormulario(contrato) : []),
@@ -229,6 +245,7 @@ export default function Predecir() {
     setEntradaResultado(null);
     setExplicacion(null);
     setReferencia(null);
+    setSimilares(null);
     setError(null);
 
     try {
@@ -239,14 +256,18 @@ export default function Predecir() {
       setEnviando(false);
       setCargandoContexto(true);
 
-      const peticiones = [explicar(entrada, respuesta.prediction)];
+      const peticiones = [
+        explicar(entrada, respuesta.prediction),
+        getSimilares(entrada, 12),
+      ];
       if (ejeComparacion && entrada[ejeComparacion] !== undefined) {
         peticiones.push(getStats(entrada[ejeComparacion], ejeComparacion));
       }
 
-      const [detalle, contexto] = await Promise.allSettled(peticiones);
+      const [detalle, cohorte, contexto] = await Promise.allSettled(peticiones);
       if (idSolicitud !== solicitudActual.current) return;
       if (detalle.status === "fulfilled") setExplicacion(detalle.value);
+      if (cohorte.status === "fulfilled") setSimilares(cohorte.value);
       if (contexto?.status === "fulfilled") setReferencia(contexto.value);
     } catch (e) {
       if (idSolicitud === solicitudActual.current) setError(e.message);
@@ -256,6 +277,27 @@ export default function Predecir() {
         setCargandoContexto(false);
       }
     }
+  }
+
+  function guardarEscenario() {
+    if (!resultado || !entradaResultado) return;
+    setEscenarios((actuales) => {
+      if (actuales.some((e) => e.resultado.prediction_id === resultado.prediction_id)) {
+        return actuales;
+      }
+      const nombresUsados = new Set(actuales.map((e) => e.nombre));
+      const letra = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").find(
+        (c) => !nombresUsados.has(`Escenario ${c}`),
+      ) ?? "Z";
+      return [
+        ...actuales.slice(-2),
+        {
+          nombre: `Escenario ${letra}`,
+          entrada: entradaResultado,
+          resultado,
+        },
+      ];
+    });
   }
 
   return (
@@ -356,11 +398,26 @@ export default function Predecir() {
           resultado={resultado}
           explicacion={explicacion}
           referencia={referencia}
+          similares={similares}
+          escenarios={escenarios}
+          entradaResultado={entradaResultado}
           error={error}
           enviando={enviando}
           cargandoContexto={cargandoContexto}
           vigente={resultadoVigente}
           esClasificacion={esClasificacion}
+          onGuardarEscenario={guardarEscenario}
+          onCargarEscenario={(escenario) =>
+            cargarValores(
+              escenario.entrada,
+              `Cargamos ${escenario.nombre}. Ajusta lo necesario y vuelve a calcular.`,
+            )
+          }
+          onEliminarEscenario={(predictionId) =>
+            setEscenarios((actuales) =>
+              actuales.filter((e) => e.resultado.prediction_id !== predictionId),
+            )
+          }
         />
       </div>
     </>
@@ -418,7 +475,23 @@ function Campo({ campo, valor, error, deshabilitado, onChange }) {
   );
 }
 
-function Resultado({ contrato, resultado, explicacion, referencia, error, enviando, cargandoContexto, vigente, esClasificacion }) {
+function Resultado({
+  contrato,
+  resultado,
+  explicacion,
+  referencia,
+  similares,
+  escenarios,
+  entradaResultado,
+  error,
+  enviando,
+  cargandoContexto,
+  vigente,
+  esClasificacion,
+  onGuardarEscenario,
+  onCargarEscenario,
+  onEliminarEscenario,
+}) {
   const fmt = formateador(contrato.dashboard?.value_format);
   const confianza = resultado?.confidence;
 
@@ -501,6 +574,8 @@ function Resultado({ contrato, resultado, explicacion, referencia, error, envian
 
             <Referencia referencia={referencia} resultado={resultado} contrato={contrato} esClasificacion={esClasificacion} fmt={fmt} />
 
+            <CasosSimilares similares={similares} contrato={contrato} />
+
             {explicacion ? (
               <section className="explicacion">
                 <span className="sobrelinea">Factores principales</span>
@@ -510,6 +585,16 @@ function Resultado({ contrato, resultado, explicacion, referencia, error, envian
             ) : cargandoContexto ? (
               <div className="contexto-cargando"><span className="spinner" /> Preparando la explicación y el contexto…</div>
             ) : null}
+
+            <ComparadorEscenarios
+              escenarios={escenarios}
+              resultado={resultado}
+              entrada={entradaResultado}
+              contrato={contrato}
+              onGuardar={onGuardarEscenario}
+              onCargar={onCargarEscenario}
+              onEliminar={onEliminarEscenario}
+            />
 
             <details className="detalle-tecnico">
               <summary>Detalles técnicos</summary>
@@ -522,6 +607,115 @@ function Resultado({ contrato, resultado, explicacion, referencia, error, envian
           </div>
         )}
       </div>
+    </section>
+  );
+}
+
+function CasosSimilares({ similares, contrato }) {
+  if (!similares?.count) return null;
+  const target = similares.target;
+  return (
+    <section className="similares">
+      <div className="similares-cabecera">
+        <div>
+          <span className="sobrelinea">Evidencia del entrenamiento</span>
+          <h3>Casos parecidos</h3>
+        </div>
+        <span className="insignia">{similares.count} vecinos</span>
+      </div>
+      <div className="similares-resumen">
+        <div>
+          <span>Similitud media</span>
+          <strong>{pct(similares.average_similarity)}</strong>
+        </div>
+        {target.kind === "categorico" ? (
+          <div>
+            <span>{target.positive_label}</span>
+            <strong>{pct(target.positive_rate)}</strong>
+          </div>
+        ) : (
+          <div>
+            <span>Promedio observado</span>
+            <strong>{new Intl.NumberFormat("es-MX").format(target.mean)}</strong>
+          </div>
+        )}
+      </div>
+      <div className="vecinos" aria-label="Resultados reales de los casos similares">
+        {similares.neighbors.map((vecino, indice) => (
+          <span
+            key={indice}
+            className={`vecino ${claseSerie(vecino.outcome, contrato)}`}
+            title={`${vecino.outcome_label} · ${pct(vecino.similarity)} similar`}
+          />
+        ))}
+      </div>
+      <p>
+        Cada punto es un caso real del entrenamiento. La cercanía pondera las
+        variables por su importancia en el modelo; es contexto descriptivo, no
+        una relación causal.
+      </p>
+    </section>
+  );
+}
+
+function ComparadorEscenarios({ escenarios, resultado, entrada, contrato, onGuardar, onCargar, onEliminar }) {
+  if (!resultado) return null;
+  const yaGuardado = escenarios.some(
+    (escenario) => escenario.resultado.prediction_id === resultado.prediction_id,
+  );
+  const positiva = contrato.positive_class;
+
+  const valorComparable = (r) => {
+    const probabilidad = r.probabilities?.find(
+      (p) => String(p.class) === String(positiva),
+    );
+    return probabilidad ? pct(probabilidad.probability) : String(r.prediction_label ?? r.prediction);
+  };
+
+  const cambiosContraActual = (escenario) =>
+    contrato.features.filter(
+      (f) => String(escenario.entrada[f.name]) !== String(entrada?.[f.name]),
+    ).length;
+
+  return (
+    <section className="comparador-escenarios">
+      <div className="comparador-cabecera">
+        <div>
+          <span className="sobrelinea">Laboratorio what-if</span>
+          <h3>Comparar escenarios</h3>
+        </div>
+        <button className="b compacta" type="button" onClick={onGuardar} disabled={yaGuardado}>
+          {yaGuardado ? "Escenario guardado" : "+ Guardar actual"}
+        </button>
+      </div>
+      <p className="comparador-ayuda">
+        Guarda este resultado, cambia algunos campos y vuelve a calcular. Compara
+        cómo responde el modelo sin interpretar el cambio como causal.
+      </p>
+      {escenarios.length > 0 && (
+        <div className="lista-escenarios">
+          {escenarios.map((escenario) => (
+            <div className="escenario" key={escenario.resultado.prediction_id}>
+              <div>
+                <strong>{escenario.nombre}</strong>
+                <span>{escenario.resultado.prediction_label ?? escenario.resultado.prediction}</span>
+              </div>
+              <div className="escenario-valor">
+                <strong>{valorComparable(escenario.resultado)}</strong>
+                <span>{cambiosContraActual(escenario)} campos distintos</span>
+              </div>
+              <button type="button" onClick={() => onCargar(escenario)}>Cargar</button>
+              <button type="button" className="eliminar" aria-label={`Eliminar ${escenario.nombre}`} onClick={() => onEliminar(escenario.resultado.prediction_id)}>×</button>
+            </div>
+          ))}
+          {!yaGuardado && (
+            <div className="escenario actual">
+              <div><strong>Actual</strong><span>{resultado.prediction_label ?? resultado.prediction}</span></div>
+              <div className="escenario-valor"><strong>{valorComparable(resultado)}</strong><span>resultado en pantalla</span></div>
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }

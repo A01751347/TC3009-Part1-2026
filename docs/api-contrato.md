@@ -497,6 +497,54 @@ para que cambiarlo por un modelo de lenguaje —ver
 
 ---
 
+## `POST /api/similar`
+
+Busca casos parecidos dentro del conjunto de entrenamiento para dar contexto a una
+predicción. No genera ni registra otra predicción.
+
+**Cuerpo**
+
+```json
+{
+  "input": { "Age": 24.0, "HomePlanet": "Earth", "...": "..." },
+  "limit": 12
+}
+```
+
+`input` obedece el mismo contrato que `/api/predict`. `limit` es opcional y se acota entre
+3 y 30.
+
+La distancia mezcla variables numéricas y categóricas y pondera cada una con
+`feature_importances`. Los valores faltantes del dataset no penalizan la similitud: se
+omiten del denominador de esa fila.
+
+**Respuesta `200`**
+
+```json
+{
+  "count": 12,
+  "average_similarity": 0.9973,
+  "weighted_by": "feature_importances",
+  "target": {
+    "kind": "categorico",
+    "positive_class": 1,
+    "positive_label": "Transportado",
+    "positive_rate": 0.4167
+  },
+  "neighbors": [
+    { "similarity": 0.9998, "outcome": 1, "outcome_label": "Transportado" }
+  ],
+  "warnings": []
+}
+```
+
+Los resultados de los vecinos son observaciones reales, no predicciones. La similitud es
+contexto descriptivo y **no implica causalidad**.
+
+Una entrada inválida devuelve el mismo `400` legible que `/api/predict`.
+
+---
+
 ## El artefacto
 
 `/api/model` y `/api/predict` se sirven de una carpeta, no de un archivo:

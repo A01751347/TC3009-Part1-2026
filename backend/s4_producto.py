@@ -10,6 +10,7 @@ import pathlib
 import sqlite3
 from datetime import datetime, timezone
 
+import pandas as pd
 from flask import Blueprint, jsonify, request
 
 bp = Blueprint("s4_producto", __name__)
@@ -191,6 +192,142 @@ def history():
             ],
         }
     )
+
+
+@bp.post("/api/similar")
+def similar():
+    """Casos del entrenamiento mas parecidos a una entrada.
+
+    La distancia usa las features crudas que el usuario reconoce, ponderadas
+    por ``feature_importances``. No es una segunda prediccion ni una
+    explicacion causal: es contexto empirico sobre ejemplos que el modelo vio.
+    """
+    cuerpo = request.get_json(silent=True)
+    if not isinstance(cuerpo, dict) or not isinstance(cuerpo.get("input"), dict):
+        return jsonify({"error": "se esperaba {input: {...}, limit?: <numero>}"}), 400
+
+    try:
+        limite = int(cuerpo.get("limit", 12))
+    except (TypeError, ValueError):
+        limite = 12
+    limite = max(3, min(limite, 30))
+
+    # Imports locales: este modulo sigue pudiendo existir en una sesion donde
+    # el modelo o el tablero todavia no fueron agregados.
+    try:
+        import s1_tablero
+        import s2_modelo
+    except ImportError:
+        return jsonify({"error": "el contexto de entrenamiento no esta disponible"}), 503
+
+    try:
+        entrada, advertencias = s2_modelo.validar(cuerpo["input"])
+    except s2_modelo.InputInvalido as e:
+        return jsonify({"error": str(e)}), 400
+
+    datos = s1_tablero.df
+    consulta = entrada.iloc[0]
+    importancias = s2_modelo.contrato.get("feature_importances", {})
+    features = [
+        f for f in s2_modelo.contrato["features"] if f["name"] in datos.columns
+    ]
+    if not features:
+        return jsonify({"error": "el dataset no comparte features con el modelo"}), 503
+
+    # Acumuladores por fila. Las celdas faltantes no penalizan: simplemente no
+    # participan en el denominador de esa fila.
+    distancia = pd.Series(0.0, index=datos.index)
+    peso_disponible = pd.Series(0.0, index=datos.index)
+
+    for feature in features:
+        nombre = feature["name"]
+        serie = datos[nombre]
+        peso = float(importancias.get(nombre, 1.0))
+        if peso <= 0:
+            continue
+        validos = serie.notna()
+
+        if feature["type"] == "num":
+            numerica = pd.to_numeric(serie, errors="coerce")
+            validos &= numerica.notna()
+            rango = max(float(feature["max"]) - float(feature["min"]), 1.0)
+            diferencia = ((numerica - float(consulta[nombre])).abs() / rango).clip(upper=1)
+        elif feature["type"] == "bool":
+            diferencia = serie.map(_booleano_normalizado).ne(bool(consulta[nombre])).astype(float)
+        else:
+            diferencia = serie.astype(str).ne(str(consulta[nombre])).astype(float)
+
+        distancia.loc[validos] += diferencia.loc[validos] * peso
+        peso_disponible.loc[validos] += peso
+
+    distancia = (distancia / peso_disponible.replace(0, float("nan"))).dropna()
+    cercanos = distancia.nsmallest(min(limite, len(distancia)))
+    target = s1_tablero.TARGET
+
+    def nativo(valor):
+        return valor.item() if hasattr(valor, "item") else valor
+
+    def clase_del_modelo(valor):
+        valor = nativo(valor)
+        # bool es subclase de int en Python: True == 1. Si se comprobara la
+        # pertenencia primero, devolveriamos True aunque el contrato declare 1
+        # y el resumen no reconoceria ningun positivo por diferencia de texto.
+        if isinstance(valor, bool) and int(valor) in s2_modelo.CLASES:
+            return int(valor)
+        if valor in s2_modelo.CLASES:
+            return valor
+        return valor
+
+    filas = []
+    for indice, d in cercanos.items():
+        resultado_real = clase_del_modelo(datos.at[indice, target])
+        filas.append(
+            {
+                "similarity": round(max(0.0, 1.0 - float(d)), 4),
+                "outcome": resultado_real,
+                "outcome_label": s2_modelo.etiqueta_de(resultado_real),
+            }
+        )
+
+    if s1_tablero.ES_CATEGORICO:
+        positiva = s2_modelo.contrato.get("positive_class")
+        positivos = sum(str(f["outcome"]) == str(positiva) for f in filas)
+        resumen_target = {
+            "kind": "categorico",
+            "positive_class": positiva,
+            "positive_label": s2_modelo.etiqueta_de(positiva),
+            "positive_rate": round(positivos / len(filas), 4) if filas else None,
+        }
+    else:
+        valores = [float(datos.at[i, target]) for i in cercanos.index]
+        resumen_target = {
+            "kind": "numerico",
+            "mean": round(sum(valores) / len(valores), 2) if valores else None,
+            "min": round(min(valores), 2) if valores else None,
+            "max": round(max(valores), 2) if valores else None,
+        }
+
+    return jsonify(
+        {
+            "count": len(filas),
+            "average_similarity": round(
+                sum(f["similarity"] for f in filas) / len(filas), 4
+            ) if filas else None,
+            "weighted_by": "feature_importances",
+            "target": resumen_target,
+            "neighbors": filas,
+            "warnings": advertencias,
+        }
+    )
+
+
+def _booleano_normalizado(valor):
+    """Normaliza los booleanos del CSV con las mismas formas que /predict."""
+    if valor in (True, 1, "true", "True", "TRUE", "1", "si", "yes"):
+        return True
+    if valor in (False, 0, "false", "False", "FALSE", "0", "no"):
+        return False
+    return None
 
 
 @bp.post("/api/explain")
