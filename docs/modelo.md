@@ -97,12 +97,15 @@ Tiene que dar el mismo resultado con 8 693 filas al entrenar que con una sola al
 
 | | Filas |
 |---|---|
-| entrenamiento | 6 085 |
-| validación | 1 304 |
-| prueba | 1 304 |
+| entrenamiento | 6 954 |
+| prueba | 1 739 |
 
-Entrenamiento para aprender, validación para decidir, prueba para reportar. La prueba se toca
-una sola vez. `stratify=y` mantiene el balance (50.36% / 49.64%) en los tres.
+Split 80/20 estratificado con `random_state=42` — **el mismo que usa el notebook del reto**, para
+que el tablero y lo que presenta el equipo reporten los mismos números.
+
+La validación no es un tercer conjunto fijo: es `StratifiedKFold(5)` sobre el entrenamiento,
+igual que la que eligió los hiperparámetros. Así la prueba se toca una sola vez y sigue midiendo
+lo que dice medir. `stratify=y` mantiene el balance (50.36% / 49.64%) en los dos conjuntos.
 
 ---
 
@@ -119,13 +122,13 @@ degenere en predecir todo positivo.
 desbalance** —las clases están a 50/50— sino que mete una decisión de producto dentro de la
 función de pérdida. Por eso viaja dentro del artefacto.
 
-### Comparativa (sobre validación, mismo pipeline y mismo split)
+### Comparativa (sobre la prueba, mismo pipeline y mismo split)
 
 | Modelo | recall ★ | f1 | FN | FP |
 |---|---|---|---|---|
-| Baseline (clase mayoritaria) | 1.0000 | 0.6694 | 0 | 648 |
-| RandomForest | 0.7866 | 0.8075 | 140 | 106 |
-| **XGBoost** | **0.9146** | **0.8163** | **56** | **214** |
+| Baseline (clase mayoritaria) | 1.0000 | 0.6700 | 0 | 863 |
+| RandomForest | 0.7991 | 0.8078 | 176 | 157 |
+| **XGBoost** | **0.9030** | **0.8092** | **85** | **288** |
 
 El baseline no es decoración: predecir siempre "Transportado" da 100% de recall y 0% de
 specificity. Sin esa fila delante es fácil no notar que un recall alto puede no significar

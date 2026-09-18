@@ -120,7 +120,8 @@ frontend/         el tablero en React + Vite
   src/viz.js        tokens y formatos compartidos por las gráficas
   src/vistas/       una vista por archivo
 notebooks/
-  00-exploracion-y-modelado.ipynb   EDA, preparación, comparación y tuning
+  00-exploracion-y-modelado.ipynb   el reto: EDA, preparación, tuning y los
+                                    cinco componentes individuales
   01-entrenar-y-exportar.ipynb      el pipeline completo y el artefacto
 artifacts/        el modelo exportado, su contrato y su módulo de derivadas
 data/             train.csv y test.csv de Kaggle
@@ -162,16 +163,18 @@ antes de pintar para que la página no parpadee.
 elegido por `GridSearchCV` sobre 240 combinaciones con `StratifiedKFold(5)`, optimizando
 **recall**.
 
-| Conjunto | recall ★ | f1 | accuracy | precision | specificity | roc_auc |
-|---|---|---|---|---|---|---|
-| validación | 0.9146 | 0.8163 | 0.7999 | 0.7369 | 0.6836 | 0.8827 |
-| prueba | 0.8950 | 0.8071 | 0.7845 | 0.7350 | 0.6723 | 0.8805 |
+| Conjunto | recall ★ | f1 | accuracy | precision | roc_auc |
+|---|---|---|---|---|---|
+| validación cruzada (5 folds) | 0.9020 | 0.8054 | 0.7804 | 0.7274 | 0.8773 |
+| prueba | 0.9030 | 0.8092 | 0.7855 | 0.7331 | 0.8836 |
+
+Split 80/20 estratificado, **el mismo que usa [notebooks/00-exploracion-y-modelado.ipynb](notebooks/00-exploracion-y-modelado.ipynb)**, para que el tablero y el notebook del reto reporten lo mismo. Matriz de confusión sobre la prueba: 575 aciertos negativos, 288 falsos positivos, **85 falsos negativos**, 791 aciertos positivos.
 
 **Recall es la métrica de decisión, no accuracy.** Un falso negativo es un pasajero
 transportado que el sistema reporta a salvo: no se despliega ninguna búsqueda. Un falso
 positivo solo moviliza recursos de más. `scale_pos_weight=2` desplaza el punto de operación a
 propósito hacia ese lado; por eso el modelo final tiene *menos* accuracy que el anterior
-(78.5% contra 80.6%) y aun así es el bueno.
+(78.6% contra 80.6%) y aun así es el bueno.
 
 Todo esto —incluida la matriz de confusión, la comparativa de modelos y los 22 experimentos de
 hiperparámetros— se renderiza solo en la pestaña **Model Card** del tablero, leído de

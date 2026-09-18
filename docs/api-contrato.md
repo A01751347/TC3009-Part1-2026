@@ -39,7 +39,7 @@ algo falla.
   "task": "clasificacion",
   "model_version": "1.0.0",
   "sklearn_version": "1.5.2",
-  "artifact_hash": "7e12d62d0087",
+  "artifact_hash": "13b0395daa67",
   "predicciones_registradas": 7
 }
 ```
@@ -237,7 +237,7 @@ validación del backend, el formulario del frontend y la Model Card.
   "trained_at": "2026-09-18T01:35:00Z",
   "sklearn_version": "1.5.2",
   "xgboost_version": "2.1.3",
-  "artifact_hash": "7e12d62d0087",
+  "artifact_hash": "13b0395daa67",
   "target": "Transported",
   "target_transform": null,
   "classes": [0, 1],
@@ -253,12 +253,13 @@ validación del backend, el formulario del frontend y la Model Card.
       "help": "en criosueño no se puede consumir nada a bordo" }
   ],
   "example": { "Age": 9.0, "HomePlanet": "Earth", "CryoSleep": false, "...": "..." },
-  "splits": { "train": 6085, "validation": 1304, "test": 1304 },
+  "splits": { "train": 6954, "test": 1739 },
+  "validation_method": "StratifiedKFold(5) sobre el conjunto de entrenamiento",
   "metrics": {
-    "validation": { "recall": 0.9146, "f1": 0.8163, "accuracy": 0.7999, "precision": 0.7369, "specificity": 0.6836, "roc_auc": 0.8827 },
-    "test":       { "recall": 0.8950, "f1": 0.8071, "accuracy": 0.7845, "precision": 0.7350, "specificity": 0.6723, "roc_auc": 0.8805 }
+    "validation": { "recall": 0.9020, "f1": 0.8054, "accuracy": 0.7804, "precision": 0.7274, "roc_auc": 0.8773 },
+    "test":       { "recall": 0.9030, "f1": 0.8092, "accuracy": 0.7855, "precision": 0.7331, "specificity": 0.6663, "roc_auc": 0.8836 }
   },
-  "confusion_matrix": { "labels": [0, 1], "matrix": [[435, 212], [69, 588]] },
+  "confusion_matrix": { "labels": [0, 1], "matrix": [[575, 288], [85, 791]] },
   "feature_importances": { "RoomService": 0.1535, "...": 0.0 },
   "derived_importances": { "HasSpent": 0.5321, "CryoSleep": 0.1207, "...": 0.0 },
   "dashboard": { "group_by": "HomePlanet", "value_format": "porcentaje", "form_title": "Datos del pasajero" },
@@ -278,6 +279,7 @@ validación del backend, el formulario del frontend y la Model Card.
 | `positive_class` | Cuál clase importa, para el recall y para el panel de referencia |
 | `class_balance` | La Model Card: con 95/5, un 95% de accuracy no significa nada |
 | `primary_metric` | Qué columna de métricas mirar primero. Va marcada con ★ |
+| `validation_method` | De dónde sale la fila `validation`. Sin esto parecería un conjunto apartado |
 | `confusion_matrix` | Qué tipo de error comete, que es distinto de cuánto se equivoca |
 | `feature_importances` | La explicación y el historial, en vocabulario del formulario |
 | `derived_importances` | La Model Card: qué columnas usa el modelo de verdad |

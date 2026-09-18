@@ -251,10 +251,23 @@ export default function ModelCard() {
               </div>
             )}
           </div>
-          {c.primary_metric && (
+          {(c.primary_metric || c.validation_method) && (
             <div className="pie">
-              <strong>★ {c.primary_metric}</strong>
-              {c.primary_metric_why ? ` — ${c.primary_metric_why}` : ""}
+              {c.primary_metric && (
+                <>
+                  <strong>★ {c.primary_metric}</strong>
+                  {c.primary_metric_why ? ` — ${c.primary_metric_why}` : ""}
+                </>
+              )}
+              {/* De dónde sale la fila de validación. Sin esto, "validation"
+                  parece un conjunto apartado cuando en realidad es el promedio
+                  de los folds. */}
+              {c.validation_method && (
+                <>
+                  <br />
+                  validation = {c.validation_method}
+                </>
+              )}
             </div>
           )}
         </section>
