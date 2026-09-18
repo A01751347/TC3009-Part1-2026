@@ -1,33 +1,22 @@
-export const meta = { titulo: "Historial", orden: 3 };
+export const meta = { titulo: "Historial", orden: 3, glifo: "◷" };
 
 import { useEffect, useState } from "react";
 import { getHistory, getModel } from "../api.js";
+import { columnasNumericas, formateador, miles, pct } from "../viz.js";
 
-const cuando = (iso) => new Date(iso).toLocaleString("es-MX");
+// Menos de esto no sostiene ninguna afirmación sobre deriva.
+const SUFICIENTE = 30;
 
-const miles = (n) => new Intl.NumberFormat("es-MX").format(n);
-
-const pesos = (n) =>
-  new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(n);
-
-/** Escribe la predicción con la unidad del problema, no con una elegida aquí. */
-function formatearPrediccion(v, contrato) {
-  if (v === null || v === undefined) return "—";
-  if ((contrato?.task ?? "regresion") === "clasificacion") {
-    return (contrato?.class_labels ?? {})[String(v)] ?? String(v);
-  }
-  if ((contrato?.dashboard?.value_format ?? "moneda") === "moneda") {
-    return pesos(v);
-  }
-  return typeof v === "number" ? miles(v) : String(v);
-}
+const cuando = (iso) =>
+  new Date(iso).toLocaleString("es-MX", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 const celda = (v) => {
-  if (v === null || v === undefined) return "—";
+  if (v === null || v === undefined) return <span className="tenue">—</span>;
   if (typeof v === "boolean") return v ? "Sí" : "No";
   if (typeof v === "number") return miles(v);
   return String(v);
@@ -40,29 +29,21 @@ export default function Historial() {
 
   useEffect(() => {
     getHistory(50).then(setDatos).catch((e) => setError(e.message));
-    // El contrato es para SABER COMO ESCRIBIR la prediccion, no para obtener
-    // los datos. Si falla, el historial se muestra igual con valores crudos:
-    // una tabla con etiquetas feas es mejor que una pantalla de error.
+    // El contrato es para SABER CÓMO ESCRIBIR la predicción, no para obtener
+    // los datos. Si falla, la tabla se muestra igual con valores crudos: una
+    // tabla con etiquetas feas es mejor que una pantalla de error.
     getModel().then(setContrato).catch(() => setContrato(null));
   }, []);
 
   if (error) return <div className="estado error">{error}</div>;
-  if (!datos) return <div className="estado">Cargando...</div>;
+  if (!datos) return <div className="estado">Cargando…</div>;
 
-  // Qué columnas del input mostrar. No están escritas a mano: salen del
-  // contrato, así que si cambias el modelo la tabla cambia sola.
-  //
-  // Se ordenan por derived_importances --lo que el modelo usa DE VERDAD-- y no
-  // por feature_importances. La diferencia no es cosmética: la segunda reparte
+  // Qué columnas del input mostrar. Se ordenan por derived_importances —lo que
+  // el modelo usa DE VERDAD— y no por feature_importances: la segunda reparte
   // el peso de `HasSpent` entre las cinco cuentas de consumo, así que las tres
-  // primeras acaban siendo columnas de gasto que son cero en la mayoría de las
-  // filas. Una tabla de ceros no deja comparar nada; `CryoSleep` y
-  // `HomePlanet` sí.
-  //
-  // Sólo se conservan los nombres que son features del contrato: las derivadas
-  // no están en el input guardado.
+  // primeras acaban siendo columnas que son cero en casi todas las filas. Una
+  // tabla de ceros no deja comparar nada.
   const delInput = new Set(Object.keys(datos.rows[0]?.input ?? {}));
-
   const porImportancia = (mapa) =>
     Object.entries(mapa ?? {})
       .sort((a, b) => b[1] - a[1])
@@ -75,84 +56,101 @@ export default function Historial() {
       ...porImportancia(contrato?.feature_importances),
       ...delInput,
     ]),
-  ].slice(0, 3);
+  ].slice(0, 4);
 
-  const etiquetaDe = (nombre) =>
-    (contrato?.features ?? []).find((f) => f.name === nombre)?.label ?? nombre;
+  const etiquetaDe = (n) =>
+    (contrato?.features ?? []).find((f) => f.name === n)?.label ?? n;
+
+  const numericas = columnasNumericas(
+    datos.rows.map((f) => f.input),
+    columnas,
+  );
+  const fmt = formateador(contrato?.dashboard?.value_format);
+  const esClasificacion = (contrato?.task ?? "regresion") === "clasificacion";
+  const escribir = (v) => {
+    if (v == null) return "—";
+    if (esClasificacion)
+      return (contrato?.class_labels ?? {})[String(v)] ?? String(v);
+    return fmt.completo(v);
+  };
 
   return (
     <>
-      <p className="subtitulo-vista">
-        Lo que este modelo ha estado prediciendo. No es el dataset de
-        entrenamiento: es el uso real del producto.
-      </p>
-
-      <Resumen datos={datos} contrato={contrato} />
-
-      <div className="panel">
-        <h2>Predicciones recientes</h2>
-        <p className="subtitulo">
-          {datos.count} registradas
-          {columnas.length > 0 &&
-            ` · se muestran las features de mayor importancia`}
+      <header className="cabecera-vista">
+        <h1>Historial de uso</h1>
+        <p>
+          Lo que este modelo ha estado prediciendo. No es el dataset de
+          entrenamiento: es el uso real del producto, y es lo único que un
+          notebook no puede contestar.
         </p>
+      </header>
 
-        {datos.rows.length === 0 ? (
-          <div className="vacio">
-            Todavía no hay ninguna. Ve a <strong>Predecir</strong> y haz una
-            predicción: va a aparecer aquí.
-          </div>
-        ) : (
-          <div className="scroll-x">
-            <table>
-              <thead>
-                <tr>
-                  <th className="txt">Cuándo</th>
-                  {columnas.map((c) => (
-                    <th key={c} className="txt" title={c}>
-                      {etiquetaDe(c)}
-                    </th>
-                  ))}
-                  <th className="txt">Predicción</th>
-                  <th className="txt">Modelo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {datos.rows.map((f) => (
-                  <tr key={f.prediction_id}>
-                    <td className="txt">{cuando(f.created_at)}</td>
-                    {columnas.map((c) => (
-                      <td key={c} className="txt">
-                        {celda(f.input[c])}
-                      </td>
+      <div className="pila">
+        <Deriva datos={datos} contrato={contrato} />
+
+        <section className="tarjeta">
+          <header>
+            <div>
+              <h2>Predicciones recientes</h2>
+              <p className="sub">
+                {datos.count} registradas · se muestran las columnas de mayor
+                peso en el modelo
+              </p>
+            </div>
+          </header>
+          <div className="cuerpo">
+            {datos.rows.length === 0 ? (
+              <div className="vacio">
+                Todavía no hay ninguna. Ve a <strong>Predecir</strong> y haz una:
+                va a aparecer aquí.
+              </div>
+            ) : (
+              <div className="tabla-envoltura">
+                <table>
+                  <thead>
+                    <tr>
+                      <th className="txt">Cuándo</th>
+                      {columnas.map((c) => (
+                        <th key={c} className={numericas.has(c) ? undefined : "txt"} title={c}>
+                          {etiquetaDe(c)}
+                        </th>
+                      ))}
+                      <th className="txt">Predicción</th>
+                      <th className="txt">Modelo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {datos.rows.map((f) => (
+                      <tr key={f.prediction_id}>
+                        <td className="txt tenue">{cuando(f.created_at)}</td>
+                        {columnas.map((c) => (
+                          <td key={c} className={numericas.has(c) ? undefined : "txt"}>
+                            {celda(f.input[c])}
+                          </td>
+                        ))}
+                        <td className="txt">{escribir(f.prediction)}</td>
+                        <td className="txt mono">{f.model_version}</td>
+                      </tr>
                     ))}
-                    <td className="txt">
-                      {formatearPrediccion(f.prediction, contrato)}
-                    </td>
-                    <td className="txt mono">{f.model_version}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
+        </section>
       </div>
     </>
   );
 }
 
-/** Lo que el producto ha estado prediciendo, contra lo que vio al entrenar.
+/** Lo que el producto predice, contra lo que vio al entrenar.
  *
- * Es la vista que justifica que exista un historial. Un notebook puede
- * reportar métricas sobre un conjunto de prueba; sólo un producto en uso puede
- * contestar "¿el modelo está viendo algo distinto de lo que aprendió?".
- *
- * La comparación es deliberadamente humilde: con veinte predicciones no hay
- * conclusión que sacar, y decirlo es parte de la lectura honesta.
+ * Es la vista que justifica que exista un historial. Un notebook reporta
+ * métricas sobre un conjunto de prueba; sólo un producto en uso contesta
+ * "¿el modelo está viendo algo distinto de lo que aprendió?".
  */
-function Resumen({ datos, contrato }) {
+function Deriva({ datos, contrato }) {
   if (!datos.rows.length) return null;
-
   const esClasificacion = (contrato?.task ?? "regresion") === "clasificacion";
   if (!esClasificacion || contrato?.positive_class === undefined) return null;
 
@@ -164,55 +162,87 @@ function Resumen({ datos, contrato }) {
 
   const tasaUso = positivas / n;
   // La tasa base del entrenamiento sale del contrato, no está escrita aquí.
-  const tasaBase = Number(
-    (contrato.class_balance ?? {})[String(positiva)] ?? NaN,
-  );
+  const tasaBase = Number((contrato.class_balance ?? {})[String(positiva)]);
   const hayBase = Number.isFinite(tasaBase);
   const delta = hayBase ? tasaUso - tasaBase : null;
-
-  // Menos de 30 casos no sostienen ninguna afirmación sobre deriva.
-  const SUFICIENTE = 30;
   const bastantes = n >= SUFICIENTE;
 
   const etiqueta =
     (contrato.class_labels ?? {})[String(positiva)] ?? String(positiva);
-  const pct = (v) => `${(v * 100).toFixed(1)}%`;
 
   return (
-    <div className="panel">
-      <h2>Uso real contra entrenamiento</h2>
-      <p className="subtitulo">
-        Si el producto empieza a predecir muy distinto de lo que vio al
-        entrenar, es la primera señal de que el modelo se está quedando viejo.
-      </p>
+    <section className="tarjeta">
+      <header>
+        <div>
+          <h2>Uso real contra entrenamiento</h2>
+          <p className="sub">
+            Si el producto empieza a predecir muy distinto de lo que vio al
+            entrenar, es la primera señal de que el modelo se está quedando
+            viejo.
+          </p>
+        </div>
+        <span className={bastantes ? "insignia" : "insignia aviso"}>
+          {bastantes ? "muestra suficiente" : `faltan ${SUFICIENTE - n}`}
+        </span>
+      </header>
 
-      <div className="tarjetas sin-margen">
-        <div className="tarjeta">
-          <div className="etiqueta">predicciones</div>
-          <div className="valor">{miles(n)}</div>
-        </div>
-        <div className="tarjeta">
-          <div className="etiqueta">{etiqueta} (uso real)</div>
-          <div className="valor">{pct(tasaUso)}</div>
-        </div>
-        {hayBase && (
-          <div className="tarjeta">
-            <div className="etiqueta">{etiqueta} (entrenamiento)</div>
-            <div className="valor">{pct(tasaBase)}</div>
+      <div className="cuerpo">
+        <div className="rejilla auto" style={{ marginBottom: "var(--e4)" }}>
+          <div className="cifra acento">
+            <span className="cifra-etiqueta">predicciones</span>
+            <span className="cifra-valor">{miles(n)}</span>
           </div>
-        )}
-        {delta != null && (
-          <div className="tarjeta">
-            <div className="etiqueta">diferencia</div>
-            <div className="valor">
-              {delta >= 0 ? "+" : "−"}
-              {Math.abs(delta * 100).toFixed(1)} pts
+          <div className="cifra">
+            <span className="cifra-etiqueta">{etiqueta} · uso real</span>
+            <span className="cifra-valor">{pct(tasaUso)}</span>
+          </div>
+          {hayBase && (
+            <div className="cifra">
+              <span className="cifra-etiqueta">{etiqueta} · entrenamiento</span>
+              <span className="cifra-valor">{pct(tasaBase)}</span>
+            </div>
+          )}
+          {delta != null && (
+            <div className="cifra">
+              <span className="cifra-etiqueta">diferencia</span>
+              <span className="cifra-valor">
+                {delta >= 0 ? "+" : "−"}
+                {Math.abs(delta * 100).toFixed(1)}
+                <span className="cifra-nota"> pts</span>
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Dos barras sobre la misma escala. Es la forma mínima que deja ver
+            la diferencia sin leer los dos números y restar. */}
+        {hayBase && (
+          <div className="barras">
+            <div className="barra">
+              <span className="barra-nombre">Uso real</span>
+              <span className="barra-pista">
+                <span
+                  className="barra-relleno dos"
+                  style={{ width: `${tasaUso * 100}%` }}
+                />
+              </span>
+              <span className="barra-valor">{pct(tasaUso)}</span>
+            </div>
+            <div className="barra">
+              <span className="barra-nombre">Entrenamiento</span>
+              <span className="barra-pista">
+                <span
+                  className="barra-relleno"
+                  style={{ width: `${tasaBase * 100}%` }}
+                />
+              </span>
+              <span className="barra-valor">{pct(tasaBase)}</span>
             </div>
           </div>
         )}
       </div>
 
-      <p className={bastantes ? "referencia" : "referencia tenue"}>
+      <div className="pie">
         {bastantes ? (
           <>
             Con {miles(n)} predicciones, una diferencia de{" "}
@@ -222,12 +252,11 @@ function Resumen({ datos, contrato }) {
           </>
         ) : (
           <>
-            Son {miles(n)} predicciones: <strong>demasiado pocas</strong> para
-            afirmar nada. Este panel empieza a significar algo a partir de{" "}
-            {SUFICIENTE}.
+            Son {miles(n)} predicciones: demasiado pocas para afirmar nada. Este
+            panel empieza a significar algo a partir de {SUFICIENTE}.
           </>
         )}
-      </p>
-    </div>
+      </div>
+    </section>
   );
 }

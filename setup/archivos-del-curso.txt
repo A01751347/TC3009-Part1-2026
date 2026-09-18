@@ -58,6 +58,7 @@ frontend/index.html
 frontend/src/main.jsx
 frontend/src/styles.css
 frontend/src/api.js
+frontend/src/viz.js
 
 # Las vistas se listan una por una y no como carpeta: 'frontend/src/vistas/'
 # a secas existiria desde el primer archivo, y las demas no llegarian nunca.

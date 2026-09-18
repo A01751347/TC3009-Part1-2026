@@ -114,8 +114,10 @@ backend/          la API en Flask
   s2_modelo.py      el artefacto, la validación y las predicciones
   s4_producto.py    el historial y las explicaciones
 frontend/         el tablero en React + Vite
-  src/main.jsx      el ensamblador: descubre las vistas solas. No se edita
+  src/main.jsx      el armazón: barra lateral, tema, y descubre las vistas solas
+  src/styles.css    el sistema de diseño: tokens, componentes, modo oscuro
   src/api.js        el cliente de la API
+  src/viz.js        tokens y formatos compartidos por las gráficas
   src/vistas/       una vista por archivo
 notebooks/
   00-exploracion-y-modelado.ipynb   EDA, preparación, comparación y tuning
@@ -131,9 +133,26 @@ submission.csv    el entregable de la competencia
 ### Los dos ensambladores
 
 `backend/app.py` descubre `s[0-9]_*.py` y registra el que exponga un `bp`.
-`frontend/src/main.jsx` descubre `src/vistas/*.jsx` y monta el que exporte `default` y `meta`.
+`frontend/src/main.jsx` descubre `src/vistas/*.jsx` y monta el que exporte `default` y `meta`
+(`{ titulo, orden, glifo }`).
 
-Ninguno de los dos se edita. Agregar funcionalidad es agregar un archivo.
+Agregar una vista es agregar un archivo: aparece sola en la navegación.
+
+### El diseño
+
+`src/styles.css` es un sistema, no una hoja de estilos: todo se declara una vez como token
+(`--serie-1`, `--e4`, `--radio`) y los componentes lo consumen por su rol. Cambiar el tema es
+cambiar un bloque.
+
+**Los dos colores de datos están validados, no elegidos a ojo.** Azul y naranja pasan las
+comprobaciones de separación bajo daltonismo (ΔE 24.7 protan) y de contraste contra la
+superficie, en los dos modos. El color sigue a la **clase**, nunca al resultado: si dependiera
+de quién gana, quien aprendió "Transportado es naranja" vería otra cosa en la siguiente
+predicción.
+
+El modo oscuro es un tema **seleccionado**, no una inversión: cada color tiene su propio paso
+para la superficie oscura. El interruptor cicla entre sistema, claro y oscuro, y se aplica
+antes de pintar para que la página no parpadee.
 
 ---
 
