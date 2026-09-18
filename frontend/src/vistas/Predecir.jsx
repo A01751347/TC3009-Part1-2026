@@ -1,43 +1,144 @@
 export const meta = { titulo: "Predecir", orden: 2, glifo: "◈" };
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { explicar, getModel, getStats, predecir } from "../api.js";
 import { claseSerie, formateador, miles, pct } from "../viz.js";
 
-const etiquetaDeClase = (c, mapa) => (mapa || {})[String(c)] ?? String(c);
+const etiquetaDeClase = (clase, mapa) =>
+  (mapa || {})[String(clase)] ?? String(clase);
 
-/** El caso "promedio" que declara el contrato: mediana o primera categoría. */
 function tipicos(contrato) {
-  const v = {};
-  for (const f of contrato.features) {
-    if (f.type === "num") v[f.name] = f.median;
-    else if (f.type === "bool") v[f.name] = "false";
-    else v[f.name] = f.allowed[0];
-  }
-  return v;
+  return Object.fromEntries(
+    contrato.features.map((f) => {
+      if (f.type === "num") return [f.name, f.median];
+      if (f.type === "bool") return [f.name, "false"];
+      return [f.name, f.allowed[0]];
+    }),
+  );
 }
 
-/** Cuántos campos se apartan del caso típico. Es contexto, no adorno: una
- *  predicción sobre un caso idéntico a la mediana dice poco. */
+function booleanoComoTexto(valor) {
+  return valor === true || valor === 1 || ["true", "1", "si", "yes"].includes(String(valor).toLowerCase())
+    ? "true"
+    : "false";
+}
+
+/** Convierte los valores de HTML a los tipos que espera el API.
+ *
+ * Es especialmente importante para /api/explain: ese endpoint no vuelve a
+ * validar el input. Enviar la cadena "false" haría que Python la leyera como
+ * verdadera al redactar la explicación.
+ */
+function entradaParaApi(valores, contrato) {
+  return Object.fromEntries(
+    contrato.features.map((f) => {
+      const valor = valores[f.name];
+      if (f.type === "num") return [f.name, Number(valor)];
+      if (f.type === "bool") return [f.name, String(valor) === "true"];
+      return [f.name, valor];
+    }),
+  );
+}
+
+function validarLocal(valores, contrato) {
+  const errores = {};
+  for (const f of contrato.features) {
+    const valor = valores[f.name];
+    if (valor === "" || valor === null || valor === undefined) {
+      errores[f.name] = "Completa este campo";
+    } else if (f.type === "num" && !Number.isFinite(Number(valor))) {
+      errores[f.name] = "Escribe un número válido";
+    }
+  }
+
+  return errores;
+}
+
 function cuantosCambiados(valores, contrato) {
   const base = tipicos(contrato);
-  return Object.keys(base).filter(
-    (k) => String(valores[k] ?? "") !== String(base[k] ?? ""),
+  return contrato.features.filter(
+    (f) => String(valores[f.name] ?? "") !== String(base[f.name] ?? ""),
   ).length;
+}
+
+function mismaEntrada(valores, entrada, contrato) {
+  if (!entrada) return false;
+  const actual = entradaParaApi(valores, contrato);
+  return contrato.features.every(
+    (f) => String(actual[f.name]) === String(entrada[f.name]),
+  );
+}
+
+/** Agrupa leyendo nombres y ayudas del contrato. Si otro modelo no declara
+ * vocabulario de viaje, cae en una sola sección genérica. */
+function seccionesDelFormulario(contrato) {
+  const grupos = { perfil: [], viaje: [], consumo: [] };
+  for (const f of contrato.features) {
+    const texto = `${f.name} ${f.label ?? ""} ${f.help ?? ""}`.toLowerCase();
+    if (f.name === "CryoSleep" || texto.includes("gasto a bordo")) {
+      grupos.consumo.push(f);
+    } else if (/homeplanet|destination|cabin_/.test(f.name.toLowerCase())) {
+      grupos.viaje.push(f);
+    } else {
+      grupos.perfil.push(f);
+    }
+  }
+
+  const prioridad = {
+    HomePlanet: 1,
+    Destination: 2,
+    Cabin_Deck: 3,
+    Cabin_Side: 4,
+    Cabin_Num: 5,
+    CryoSleep: 1,
+    RoomService: 2,
+    FoodCourt: 3,
+    ShoppingMall: 4,
+    Spa: 5,
+    VRDeck: 6,
+  };
+  grupos.viaje.sort((a, b) => (prioridad[a.name] ?? 99) - (prioridad[b.name] ?? 99));
+  grupos.consumo.sort((a, b) => (prioridad[a.name] ?? 99) - (prioridad[b.name] ?? 99));
+
+  const esFormularioDeViaje = grupos.viaje.length > 0 || grupos.consumo.length > 0;
+  return [
+    {
+      key: "perfil",
+      titulo: esFormularioDeViaje ? "Perfil del pasajero" : "Datos del caso",
+      descripcion: esFormularioDeViaje
+        ? "Información básica del pasajero y su grupo."
+        : "Valores que recibirá el modelo.",
+      campos: grupos.perfil,
+    },
+    {
+      key: "viaje",
+      titulo: "Trayecto y cabina",
+      descripcion: "Origen, destino y ubicación dentro de la nave.",
+      campos: grupos.viaje,
+    },
+    {
+      key: "consumo",
+      titulo: "Consumo a bordo",
+      descripcion: "Criosueño y créditos consumidos durante el viaje.",
+      campos: grupos.consumo,
+    },
+  ].filter((seccion) => seccion.campos.length > 0);
 }
 
 export default function Predecir() {
   const [contrato, setContrato] = useState(null);
   const [valores, setValores] = useState({});
+  const [errores, setErrores] = useState({});
   const [enviando, setEnviando] = useState(false);
+  const [cargandoContexto, setCargandoContexto] = useState(false);
   const [resultado, setResultado] = useState(null);
+  const [entradaResultado, setEntradaResultado] = useState(null);
   const [explicacion, setExplicacion] = useState(null);
   const [referencia, setReferencia] = useState(null);
+  const [avisoFormulario, setAvisoFormulario] = useState(null);
   const [error, setError] = useState(null);
+  const solicitudActual = useRef(0);
 
-  // El formulario NO tiene una lista de campos escrita a mano: se construye con
-  // lo que dice el contrato. Si el modelo gana una feature, aquí aparece un
-  // campo; si cambia el rango, cambia la ayuda.
   useEffect(() => {
     getModel()
       .then((c) => {
@@ -49,168 +150,204 @@ export default function Predecir() {
       );
   }, []);
 
-  const ejeComparacion = contrato?.dashboard?.group_by ?? null;
-
-  function limpiar() {
-    setResultado(null);
-    setExplicacion(null);
-    setReferencia(null);
-    setError(null);
-  }
-
-  /** El caso de referencia: el mismo example.json contra el que corre la
-   *  prueba de paridad, así que es el único del que se puede afirmar que el
-   *  notebook y el servicio devuelven lo mismo. */
-  function cargarEjemplo() {
-    if (!contrato?.example) return;
-    const v = {};
-    for (const f of contrato.features) {
-      const valor = contrato.example[f.name];
-      v[f.name] = f.type === "bool" ? String(Boolean(valor)) : valor;
-    }
-    setValores(v);
-    limpiar();
-  }
-
-  async function enviar(evento) {
-    evento.preventDefault();
-    if (enviando) return; // sin envíos duplicados mientras hay uno en curso
-    setEnviando(true);
-    limpiar();
-
-    try {
-      const r = await predecir(valores);
-      setResultado(r);
-
-      // Las dos peticiones de contexto van DESPUÉS y por separado: si
-      // cualquiera falla, el usuario se queda con su predicción igual.
-      explicar(valores, r.prediction)
-        .then((e) => setExplicacion(e.explanation))
-        .catch(() => setExplicacion(null));
-
-      if (ejeComparacion && valores[ejeComparacion] !== undefined) {
-        getStats(valores[ejeComparacion])
-          .then(setReferencia)
-          .catch(() => setReferencia(null));
-      }
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setEnviando(false);
-    }
-  }
+  const secciones = useMemo(
+    () => (contrato ? seccionesDelFormulario(contrato) : []),
+    [contrato],
+  );
 
   if (error && !contrato) return <div className="estado error">{error}</div>;
   if (!contrato) return <div className="estado">Cargando el contrato…</div>;
 
   const esClasificacion = (contrato.task ?? "regresion") === "clasificacion";
+  const ejeComparacion = contrato.dashboard?.group_by ?? null;
   const cambiados = cuantosCambiados(valores, contrato);
+  const completos = contrato.features.filter((f) => {
+    const v = valores[f.name];
+    return v !== "" && v !== null && v !== undefined;
+  }).length;
+  const resultadoVigente = mismaEntrada(valores, entradaResultado, contrato);
+
+  const camposDeGasto = contrato.features.filter((f) =>
+    (f.help ?? "").toLowerCase().includes("gasto a bordo"),
+  );
+  const gastoTotal = camposDeGasto.reduce(
+    (total, f) => total + (Number(valores[f.name]) || 0),
+    0,
+  );
+  const enCrio = String(valores.CryoSleep) === "true";
+
+  function actualizarCampo(campo, valor) {
+    setValores((actuales) => {
+      const siguientes = { ...actuales, [campo.name]: valor };
+      if (campo.name === "CryoSleep" && String(valor) === "true") {
+        for (const gasto of camposDeGasto) siguientes[gasto.name] = 0;
+      }
+      return siguientes;
+    });
+    setErrores((actuales) => ({ ...actuales, [campo.name]: undefined }));
+    setError(null);
+    if (campo.name === "CryoSleep" && String(valor) === "true" && gastoTotal > 0) {
+      setAvisoFormulario("Activaste el criosueño; ajustamos los consumos a 0 para mantener un caso coherente.");
+    } else {
+      setAvisoFormulario(null);
+    }
+  }
+
+  function cargarValores(nuevos, mensaje) {
+    const preparados = {};
+    for (const f of contrato.features) {
+      const valor = nuevos[f.name];
+      preparados[f.name] = f.type === "bool" ? booleanoComoTexto(valor) : valor;
+    }
+    setValores(preparados);
+    setErrores({});
+    setError(null);
+    setAvisoFormulario(mensaje);
+  }
+
+  async function enviar(evento) {
+    evento.preventDefault();
+    if (enviando) return;
+
+    const erroresNuevos = validarLocal(valores, contrato);
+    setErrores(erroresNuevos);
+    if (Object.keys(erroresNuevos).length > 0) {
+      requestAnimationFrame(() =>
+        document.querySelector(".campo.invalido")?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        }),
+      );
+      return;
+    }
+
+    const entrada = entradaParaApi(valores, contrato);
+    const idSolicitud = ++solicitudActual.current;
+    setEnviando(true);
+    setCargandoContexto(false);
+    setResultado(null);
+    setEntradaResultado(null);
+    setExplicacion(null);
+    setReferencia(null);
+    setError(null);
+
+    try {
+      const respuesta = await predecir(entrada);
+      if (idSolicitud !== solicitudActual.current) return;
+      setResultado(respuesta);
+      setEntradaResultado(entrada);
+      setEnviando(false);
+      setCargandoContexto(true);
+
+      const peticiones = [explicar(entrada, respuesta.prediction)];
+      if (ejeComparacion && entrada[ejeComparacion] !== undefined) {
+        peticiones.push(getStats(entrada[ejeComparacion], ejeComparacion));
+      }
+
+      const [detalle, contexto] = await Promise.allSettled(peticiones);
+      if (idSolicitud !== solicitudActual.current) return;
+      if (detalle.status === "fulfilled") setExplicacion(detalle.value);
+      if (contexto?.status === "fulfilled") setReferencia(contexto.value);
+    } catch (e) {
+      if (idSolicitud === solicitudActual.current) setError(e.message);
+    } finally {
+      if (idSolicitud === solicitudActual.current) {
+        setEnviando(false);
+        setCargandoContexto(false);
+      }
+    }
+  }
 
   return (
     <>
       <header className="cabecera-vista">
-        <h1>Predecir un caso</h1>
+        <h1>Simular un pasajero</h1>
         <p>
-          Los {contrato.features.length} campos salen del contrato del modelo,
-          no de esta pantalla. Modelo {contrato.model_version}, entrenado el{" "}
-          {contrato.trained_at.slice(0, 10)}.
+          Completa el perfil y obtén una probabilidad acompañada de contexto.
+          El formulario se genera desde el contrato del modelo {contrato.model_version}.
         </p>
       </header>
 
-      <div className="rejilla n2">
-        <form className="tarjeta" onSubmit={enviar}>
+      <div className="predict-layout">
+        <form className="tarjeta formulario-prediccion" onSubmit={enviar} noValidate>
           <header>
             <div>
+              <span className="sobrelinea">Entrada del modelo</span>
               <h2>{contrato.dashboard?.form_title ?? "Datos de entrada"}</h2>
               <p className="sub">
-                {cambiados === 0
-                  ? "Todos los campos están en su valor típico."
-                  : `${cambiados} de ${contrato.features.length} campos se apartan del caso típico.`}
+                {completos}/{contrato.features.length} campos completos · {cambiados} modificados
               </p>
+            </div>
+            <div className="progreso-formulario" aria-label={`${completos} de ${contrato.features.length} campos completos`}>
+              <span style={{ width: `${(completos / contrato.features.length) * 100}%` }} />
             </div>
           </header>
 
-          <div className="cuerpo">
-            <div className="campos">
-              {contrato.features.map((f) => (
-                <label key={f.name} className="campo">
-                  {/* El nombre legible sale del contrato. Si no lo trae, se usa
-                      el técnico: es feo, pero nunca queda vacío. */}
-                  <span title={f.name}>{f.label ?? f.name}</span>
-
-                  {f.type === "cat" && (
-                    <select
-                      value={valores[f.name] ?? ""}
-                      onChange={(e) =>
-                        setValores({ ...valores, [f.name]: e.target.value })
-                      }
-                    >
-                      {f.allowed.map((v) => (
-                        <option key={String(v)} value={v}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-
-                  {/* Un booleano se pide con un desplegable y no con una
-                      casilla: una casilla no distingue "falso" de "no
-                      contestado". */}
-                  {f.type === "bool" && (
-                    <select
-                      value={valores[f.name] ?? "false"}
-                      onChange={(e) =>
-                        setValores({ ...valores, [f.name]: e.target.value })
-                      }
-                    >
-                      <option value="false">No</option>
-                      <option value="true">Sí</option>
-                    </select>
-                  )}
-
-                  {f.type === "num" && (
-                    <input
-                      type="number"
-                      step="any"
-                      value={valores[f.name] ?? ""}
-                      onChange={(e) =>
-                        setValores({ ...valores, [f.name]: e.target.value })
-                      }
-                    />
-                  )}
-
-                  <span className="ayuda">
-                    {f.type === "num" &&
-                      `${f.min.toLocaleString()} – ${f.max.toLocaleString()}`}
-                    {f.type === "num" && f.help && " · "}
-                    {f.help}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="pie">
-            <div className="acciones">
-              <button type="submit" className="b primaria" disabled={enviando}>
-                {enviando ? "Consultando…" : "Predecir"}
-              </button>
-              {contrato.example && (
-                <button type="button" className="b" onClick={cargarEjemplo}>
-                  Caso de ejemplo
-                </button>
-              )}
+          <div className="presets">
+            <span>Comenzar con</span>
+            <button
+              type="button"
+              className="preset"
+              onClick={() => cargarValores(tipicos(contrato), "Cargamos los valores típicos del entrenamiento.")}
+            >
+              Valores típicos
+            </button>
+            {contrato.example && (
               <button
                 type="button"
-                className="b"
-                onClick={() => {
-                  setValores(tipicos(contrato));
-                  limpiar();
-                }}
+                className="preset"
+                onClick={() => cargarValores(contrato.example, "Cargamos el caso verificado contra el notebook.")}
               >
-                Valores típicos
+                Caso verificado
               </button>
+            )}
+          </div>
+
+          <div className="cuerpo formulario-cuerpo">
+            {avisoFormulario && (
+              <div className="nota formulario-aviso" role="status">{avisoFormulario}</div>
+            )}
+
+            {secciones.map((seccion, indice) => (
+              <section className="seccion-formulario" key={seccion.key}>
+                <div className="seccion-titulo">
+                  <span>0{indice + 1}</span>
+                  <div>
+                    <h3>{seccion.titulo}</h3>
+                    <p>{seccion.descripcion}</p>
+                  </div>
+                </div>
+                <div className="campos">
+                  {seccion.campos.map((f) => (
+                    <Campo
+                      key={f.name}
+                      campo={f}
+                      valor={valores[f.name]}
+                      error={errores[f.name]}
+                      deshabilitado={enCrio && camposDeGasto.some((g) => g.name === f.name)}
+                      onChange={(valor) => actualizarCampo(f, valor)}
+                    />
+                  ))}
+                </div>
+                {seccion.key === "consumo" && camposDeGasto.length > 0 && (
+                  <div className="resumen-consumo">
+                    <span>Gasto total del caso</span>
+                    <strong>{miles(gastoTotal)} créditos</strong>
+                    {enCrio && <small>Criosueño activo · consumos bloqueados</small>}
+                  </div>
+                )}
+              </section>
+            ))}
+          </div>
+
+          <div className="pie pie-formulario">
+            <div>
+              <span className="pie-estado">{completos === contrato.features.length ? "Listo para calcular" : "Faltan campos"}</span>
+              <small>Los valores fuera del rango se aceptan, pero el API los marca como menos confiables.</small>
             </div>
+            <button type="submit" className="b primaria boton-predecir" disabled={enviando}>
+              {enviando ? <><span className="spinner" /> Calculando…</> : resultado && !resultadoVigente ? "Actualizar predicción" : "Generar predicción"}
+            </button>
           </div>
         </form>
 
@@ -220,6 +357,9 @@ export default function Predecir() {
           explicacion={explicacion}
           referencia={referencia}
           error={error}
+          enviando={enviando}
+          cargandoContexto={cargandoContexto}
+          vigente={resultadoVigente}
           esClasificacion={esClasificacion}
         />
       </div>
@@ -227,111 +367,158 @@ export default function Predecir() {
   );
 }
 
-function Resultado({
-  contrato,
-  resultado,
-  explicacion,
-  referencia,
-  error,
-  esClasificacion,
-}) {
-  const fmt = formateador(contrato.dashboard?.value_format);
+function Campo({ campo, valor, error, deshabilitado, onChange }) {
+  const id = `campo-${campo.name}`;
+  const numero = Number(valor);
+  const fueraDeRango =
+    campo.type === "num" &&
+    Number.isFinite(numero) &&
+    (numero < campo.min || numero > campo.max);
+  const ayudaId = `${id}-ayuda`;
 
   return (
-    <section className="tarjeta">
+    <div className={`campo ${error ? "invalido" : ""} ${deshabilitado ? "deshabilitado" : ""}`}>
+      <label htmlFor={id} title={campo.name}>{campo.label ?? campo.name}</label>
+
+      {campo.type === "cat" && (
+        <select id={id} value={valor ?? ""} onChange={(e) => onChange(e.target.value)} aria-describedby={ayudaId}>
+          {campo.allowed.map((opcion) => <option key={String(opcion)} value={opcion}>{opcion}</option>)}
+        </select>
+      )}
+
+      {campo.type === "bool" && (
+        <div id={id} className="selector-binario" role="group" aria-labelledby={`${id}-label`}>
+          <span id={`${id}-label`} className="sr-only">{campo.label ?? campo.name}</span>
+          <button type="button" className={String(valor) === "false" ? "activo" : ""} onClick={() => onChange("false")}>No</button>
+          <button type="button" className={String(valor) === "true" ? "activo" : ""} onClick={() => onChange("true")}>Sí</button>
+        </div>
+      )}
+
+      {campo.type === "num" && (
+        <div className="entrada-numero">
+          <input
+            id={id}
+            type="number"
+            step="any"
+            inputMode="decimal"
+            value={valor ?? ""}
+            disabled={deshabilitado}
+            aria-invalid={Boolean(error)}
+            aria-describedby={ayudaId}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          {campo.help?.includes("créditos") && <span>cr</span>}
+        </div>
+      )}
+
+      <span id={ayudaId} className={`ayuda ${fueraDeRango ? "fuera-rango" : ""}`}>
+        {error ? error : fueraDeRango ? `Fuera del rango de entrenamiento (${miles(campo.min)}–${miles(campo.max)})` : <>{campo.type === "num" && `${miles(campo.min)}–${miles(campo.max)}`}{campo.type === "num" && campo.help && " · "}{campo.help}</>}
+      </span>
+    </div>
+  );
+}
+
+function Resultado({ contrato, resultado, explicacion, referencia, error, enviando, cargandoContexto, vigente, esClasificacion }) {
+  const fmt = formateador(contrato.dashboard?.value_format);
+  const confianza = resultado?.confidence;
+
+  return (
+    <section className="tarjeta panel-resultado" aria-live="polite" aria-busy={enviando}>
       <header>
         <div>
-          <h2>{esClasificacion ? "Predicción" : "Estimación"}</h2>
-          <p className="sub">Lo que el modelo responde para este caso.</p>
+          <span className="sobrelinea">Salida del modelo</span>
+          <h2>{esClasificacion ? "Resultado" : "Estimación"}</h2>
+          <p className="sub">Predicción, probabilidad y contexto para decidir.</p>
         </div>
-        {resultado && (
-          <span className="insignia">v{resultado.model_version}</span>
-        )}
+        {resultado && <span className={vigente ? "insignia ok" : "insignia aviso"}>{vigente ? `v${resultado.model_version}` : "Sin actualizar"}</span>}
       </header>
 
-      <div className="cuerpo">
-        {error && (
-          <div className="nota critico">
-            <strong>No se pudo predecir.</strong>
-            <br />
-            {error}
+      <div className="cuerpo resultado-cuerpo">
+        {error && <div className="nota critico"><strong>No se pudo predecir.</strong><br />{error}</div>}
+
+        {enviando && (
+          <div className="resultado-cargando">
+            <span className="orbita-cargando"><i /></span>
+            <strong>Calculando el resultado</strong>
+            <span>Validando los campos y consultando el modelo…</span>
           </div>
         )}
 
-        {!error && !resultado && (
-          <div className="vacio">
-            Llena el formulario y presiona <strong>Predecir</strong>.
+        {!error && !enviando && !resultado && (
+          <div className="resultado-vacio">
+            <span className="resultado-vacio-icono">✦</span>
+            <h3>Aquí aparecerá el resultado</h3>
+            <p>La respuesta incluirá la clase predicha, su probabilidad, una comparación con el entrenamiento y los factores que más pesan.</p>
+            <ol>
+              <li><span>01</span> Revisa el perfil</li>
+              <li><span>02</span> Genera la predicción</li>
+              <li><span>03</span> Interpreta el contexto</li>
+            </ol>
           </div>
         )}
 
-        {resultado && (
-          <div className="pila" style={{ gap: "var(--e4)" }}>
+        {resultado && !enviando && (
+          <div className="resultado-contenido">
+            {!vigente && <div className="nota aviso">Modificaste el formulario. Este resultado corresponde a los valores anteriores; actualízalo antes de usarlo.</div>}
+
             <div className="veredicto">
-              <span className="veredicto-clase">
-                {esClasificacion
-                  ? (resultado.prediction_label ?? String(resultado.prediction))
-                  : fmt.completo(resultado.prediction)}
-              </span>
-              {resultado.confidence != null && (
-                <span className="veredicto-conf">
-                  {pct(resultado.confidence)} de confianza
-                </span>
+              <div>
+                <span className="veredicto-kicker">El modelo predice</span>
+                <span className="veredicto-clase">{esClasificacion ? (resultado.prediction_label ?? String(resultado.prediction)) : fmt.completo(resultado.prediction)}</span>
+                {confianza != null && <span className="veredicto-conf">Probabilidad estimada para esta clase</span>}
+              </div>
+              {confianza != null && (
+                <div className="resultado-orbe" style={{ "--probabilidad": `${confianza * 360}deg` }}>
+                  <span>{pct(confianza)}</span>
+                </div>
               )}
             </div>
 
-            {/* La confianza no es un adorno: una clasificación al 51% y una al
-                99% son decisiones distintas, y esconder la diferencia es lo que
-                hace que la gente confíe de más en un modelo. */}
             {esClasificacion && resultado.probabilities?.length > 0 && (
-              <div className="barras">
-                {resultado.probabilities.map((p) => (
-                  <div className="barra" key={String(p.class)}>
-                    <span className="barra-nombre">{p.label}</span>
-                    <span className="barra-pista">
-                      <span
-                        // El color es de la CLASE, siempre el mismo. La que no
-                        // ganó se apaga con opacidad, no cambiando de tono.
-                        className={`barra-relleno ${claseSerie(p.class, contrato)}`}
-                        style={{
-                          width: `${p.probability * 100}%`,
-                          opacity: p.class === resultado.prediction ? 1 : 0.4,
-                        }}
-                      />
-                      {/* El umbral, dibujado. Dos barras se comparan bien,
-                          pero sin la marca del 50% no se ve CUÁNTO margen hay
-                          sobre la decisión. */}
-                      <span className="barra-umbral" style={{ left: "50%" }} />
-                    </span>
-                    <span className="barra-valor">{pct(p.probability)}</span>
-                  </div>
-                ))}
+              <div className="bloque-resultado">
+                <h3>Distribución de probabilidad</h3>
+                <div className="barras probabilidades">
+                  {resultado.probabilities.map((p) => (
+                    <div className="barra" key={String(p.class)}>
+                      <span className="barra-nombre">{p.label}</span>
+                      <span className="barra-pista">
+                        <span className={`barra-relleno ${claseSerie(p.class, contrato)}`} style={{ width: `${p.probability * 100}%`, opacity: p.class === resultado.prediction ? 1 : 0.42 }} />
+                      </span>
+                      <span className="barra-valor">{pct(p.probability)}</span>
+                    </div>
+                  ))}
+                </div>
+                <Margen resultado={resultado} />
               </div>
             )}
-
-            <Margen resultado={resultado} />
 
             {resultado.warnings?.length > 0 && (
-              <div className="nota aviso">
-                {resultado.warnings.map((w) => (
-                  <div key={w}>{w}</div>
-                ))}
+              <div className="nota aviso advertencias-api">
+                <strong>El API generó {resultado.warnings.length === 1 ? "una advertencia" : `${resultado.warnings.length} advertencias`}:</strong>
+                {resultado.warnings.map((warning) => <span key={warning}>{warning}</span>)}
               </div>
             )}
 
-            <Referencia
-              referencia={referencia}
-              resultado={resultado}
-              contrato={contrato}
-              esClasificacion={esClasificacion}
-              fmt={fmt}
-            />
+            <Referencia referencia={referencia} resultado={resultado} contrato={contrato} esClasificacion={esClasificacion} fmt={fmt} />
 
-            {explicacion && <p className="nota">{explicacion}</p>}
+            {explicacion ? (
+              <section className="explicacion">
+                <span className="sobrelinea">Factores principales</span>
+                <p>{explicacion.explanation}</p>
+                <small>Explicación generada por {explicacion.source === "plantilla" ? "reglas del modelo" : explicacion.source}.</small>
+              </section>
+            ) : cargandoContexto ? (
+              <div className="contexto-cargando"><span className="spinner" /> Preparando la explicación y el contexto…</div>
+            ) : null}
 
-            <dl className="ficha">
-              <dt>identificador</dt>
-              <dd className="mono">{resultado.prediction_id}</dd>
-            </dl>
+            <details className="detalle-tecnico">
+              <summary>Detalles técnicos</summary>
+              <dl className="ficha">
+                <dt>identificador</dt><dd className="mono">{resultado.prediction_id}</dd>
+                <dt>modelo</dt><dd>{resultado.model_version}</dd>
+                <dt>tarea</dt><dd>{resultado.task}</dd>
+              </dl>
+            </details>
           </div>
         )}
       </div>
@@ -339,67 +526,42 @@ function Resultado({
   );
 }
 
-/** Cuánto margen tiene la decisión sobre el umbral, y qué significa.
- *
- * El modelo se entrenó con scale_pos_weight=2: está desplazado a propósito
- * hacia el recall. Decirlo aquí, junto al número, es la diferencia entre una
- * predicción y una predicción que se puede usar para decidir.
- */
 function Margen({ resultado }) {
-  if (resultado.confidence == null) return null;
-  const margen = resultado.confidence - 0.5;
-  const ajustada = margen < 0.1;
+  if (!resultado.probabilities || resultado.probabilities.length < 2) return null;
+  const ordenadas = [...resultado.probabilities].sort((a, b) => b.probability - a.probability);
+  const margen = ordenadas[0].probability - ordenadas[1].probability;
+  const nivel = margen < 0.1 ? "ajustada" : margen < 0.3 ? "moderada" : "clara";
   return (
-    <div className={ajustada ? "nota aviso" : "nota"}>
-      <strong>
-        {ajustada ? "Decisión ajustada" : "Decisión holgada"}:{" "}
-        {(margen * 100).toFixed(1)} puntos
-      </strong>{" "}
-      por encima del umbral del 50%.
-      {ajustada &&
-        " Un caso así cae cerca de la frontera, donde el modelo se equivoca más."}
-    </div>
+    <p className={`lectura-margen ${nivel === "ajustada" ? "ajustada" : ""}`}>
+      <strong>Decisión {nivel}.</strong> Las dos clases principales están separadas por {(margen * 100).toFixed(1)} puntos.
+    </p>
   );
 }
 
-/** Pone la predicción al lado de lo que pasó en el entrenamiento. Es el mismo
- *  /api/stats del tablero: una predicción sin referencia es un número sin
- *  escala. */
 function Referencia({ referencia, resultado, contrato, esClasificacion, fmt }) {
   if (!referencia?.target) return null;
-  const t = referencia.target;
+  const target = referencia.target;
 
   if (esClasificacion) {
-    if (t.kind !== "categorico" || t.positive_rate == null) return null;
-    // La clase se nombra desde el CONTRATO, no desde el tablero: el tablero lee
-    // la columna del CSV --donde es booleana-- y el contrato declara 0 y 1.
-    const clase = contrato.positive_class ?? t.positive_class;
-    const suyo = resultado.probabilities?.find((p) => p.class === clase);
+    if (target.kind !== "categorico" || target.positive_rate == null) return null;
+    const clase = contrato.positive_class ?? target.positive_class;
+    const probabilidad = resultado.probabilities?.find((p) => String(p.class) === String(clase));
     return (
-      <p className="nota">
-        En <strong>{referencia.scope ?? "el conjunto completo"}</strong>,{" "}
-        {pct(t.positive_rate)} de {miles(referencia.count)} casos del
-        entrenamiento fueron{" "}
-        <strong>{etiquetaDeClase(clase, contrato.class_labels)}</strong>
-        {suyo && <> — este caso está en <strong>{pct(suyo.probability)}</strong></>}.
-      </p>
+      <section className="referencia-resultado">
+        <div><span>Grupo comparable</span><strong>{referencia.scope ?? "Conjunto completo"}</strong><small>{miles(referencia.count)} casos de entrenamiento</small></div>
+        <div><span>Tasa histórica</span><strong>{pct(target.positive_rate)}</strong><small>{etiquetaDeClase(clase, contrato.class_labels)}</small></div>
+        {probabilidad && <div><span>Este caso</span><strong>{pct(probabilidad.probability)}</strong><small>probabilidad estimada</small></div>}
+      </section>
     );
   }
 
-  if (t.kind === "categorico" || t.mean == null) return null;
-  const delta = Math.abs(
-    Math.round(((resultado.prediction - t.mean) / t.mean) * 100),
-  );
+  if (target.kind === "categorico" || target.mean == null) return null;
+  const delta = target.mean === 0 ? null : ((resultado.prediction - target.mean) / Math.abs(target.mean)) * 100;
   return (
-    <p className="nota">
-      El promedio en{" "}
-      <strong>{referencia.scope ?? "el conjunto completo"}</strong> es{" "}
-      {fmt.completo(t.mean)} sobre {miles(referencia.count)} registros — este
-      caso está{" "}
-      <strong>
-        {delta}% {resultado.prediction >= t.mean ? "arriba" : "abajo"}
-      </strong>
-      .
-    </p>
+    <section className="referencia-resultado">
+      <div><span>Grupo comparable</span><strong>{referencia.scope ?? "Conjunto completo"}</strong><small>{miles(referencia.count)} registros</small></div>
+      <div><span>Promedio histórico</span><strong>{fmt.completo(target.mean)}</strong></div>
+      {delta != null && <div><span>Diferencia</span><strong>{delta >= 0 ? "+" : ""}{delta.toFixed(0)}%</strong><small>contra el promedio</small></div>}
+    </section>
   );
 }
