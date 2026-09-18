@@ -67,7 +67,7 @@ No inventes cifras que no te di. No digas que el modelo "cree" o "piensa".
 Haz eso con cinco o seis casas distintas, mira qué tienen en común las respuestas buenas, y
 llévalo a tu plantilla. Acabas con mejor redacción y **cero dependencias nuevas**.
 
-En [docs/prompts/](../prompts/) hay más prompts de este estilo para el reto.
+En [docs/prompts/](../../prompts/) hay más prompts de este estilo para el reto.
 
 ### 2 · Una llave de Google AI Studio
 

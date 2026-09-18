@@ -4,43 +4,70 @@
 # sin pisar tu trabajo.
 #
 # DEL CURSO: los trae siempre, sobreescribiendo. Son archivos que tu no editas
-#            --guias, datos, andamiaje-- y que mejoran entre sesiones.
+#            --andamiaje, guias-- y que mejoran entre sesiones.
 #
 # TUYOS:     los trae SOLO SI NO EXISTEN. Si ya los escribiste, no se tocan.
 #            Aqui vive tu codigo.
 #
 # Ojo con las carpetas en [TUYOS]: la comprobacion es "existe o no existe", y
-# una carpeta existe desde que tiene un solo archivo adentro. Por eso las
-# vistas se listan una por una: si estuviera 'frontend/src/vistas/' a secas,
-# crear Tablero.jsx bastaria para que las vistas de las sesiones siguientes
-# nunca llegaran.
+# una carpeta existe desde que tiene un solo archivo adentro.
+#
+# ---------------------------------------------------------------------------
+# ESTE ARCHIVO SE MODIFICO RESPECTO AL DEL CURSO.
+#
+# El proyecto se re-apunto del modelo de precios de vivienda al clasificador de
+# Spaceship Titanic, y eso implico reemplazar archivos que el template marcaba
+# como [DEL CURSO]: README.md, docs/, notebooks/, tests/, data/, los dos
+# ensambladores y requirements.txt.
+#
+# Si se quedaran en [DEL CURSO], el primer './setup/run actualizar N' los
+# devolveria a la version de casas y el servicio dejaria de arrancar --entre
+# otras cosas, requirements.txt perderia xgboost--. Por eso pasan a [TUYOS].
+#
+# Lo que sigue siendo del curso: setup/ --la herramienta, que conviene que se
+# actualice sola-- y docs/curso/, que es el material original archivado tal
+# cual.
+#
+# El template original esta en el repositorio del curso, y cada archivo
+# reemplazado sigue en el historial de git.
+# ---------------------------------------------------------------------------
 
 [DEL CURSO]
-README.md
-.gitignore
-docs/
 setup/
-data/
-notebooks/
-tests/
-backend/requirements.txt
-
-# Los dos ensambladores. Ninguno de los dos lo escribes tu: descubren solos
-# los modulos y las vistas de cada sesion. Por eso cambian con el curso.
-backend/app.py
-frontend/src/main.jsx
-frontend/package.json
-frontend/vite.config.js
-frontend/index.html
-frontend/src/styles.css
+docs/curso/
 
 [TUYOS]
+
+# Documentacion del proyecto
+README.md
+docs/00-setup.md
+docs/api-contrato.md
+docs/modelo.md
+
+# Backend. app.py es el ensamblador: descubre los modulos solo.
+backend/app.py
+backend/requirements.txt
 backend/s1_tablero.py
 backend/s2_modelo.py
 backend/s4_producto.py
+
+# Frontend. main.jsx es el ensamblador: descubre las vistas solas.
+frontend/package.json
+frontend/vite.config.js
+frontend/index.html
+frontend/src/main.jsx
+frontend/src/styles.css
 frontend/src/api.js
+
+# Las vistas se listan una por una y no como carpeta: 'frontend/src/vistas/'
+# a secas existiria desde el primer archivo, y las demas no llegarian nunca.
 frontend/src/vistas/Tablero.jsx
 frontend/src/vistas/Predecir.jsx
 frontend/src/vistas/Historial.jsx
 frontend/src/vistas/ModelCard.jsx
+
+# Datos, modelo y pruebas
+data/
+notebooks/
+tests/
 artifacts/

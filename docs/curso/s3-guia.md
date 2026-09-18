@@ -60,7 +60,7 @@ Eso te deja con las sesiones 1 y 2 completas. Pero **falta tu artefacto**: el cu
 manda `artifacts/pipeline.joblib`, porque cada quien genera el suyo (si el curso enviara
 uno, chocaría con el tuyo en cada `git pull`).
 
-Corre el notebook de la sesión 2 en Colab —[notebooks/01-entrenar-y-exportar.ipynb](../notebooks/01-entrenar-y-exportar.ipynb)—,
+Corre el notebook de la sesión 2 en Colab —[notebooks/01-entrenar-y-exportar.ipynb](../../notebooks/01-entrenar-y-exportar.ipynb)—,
 descarga el zip y descomprímelo en `artifacts/`. Son unos 10 minutos y se pueden hacer en
 paralelo mientras sigues esta guía: el backend de hoy no arranca sin artefacto, así que
 hazlo antes de llegar a la marca de los 15 minutos.
@@ -169,7 +169,7 @@ Todo es frontend. **El backend no recibe ni una línea hoy** — y aun así vas 
 algo que no se parece en nada a lo que tenías. Esa es la sesión.
 
 Fíjate en las dos últimas líneas: **tu código de las sesiones 1 y 2 no se tocó.** Eso no es
-casualidad, está declarado en [setup/archivos-del-curso.txt](../setup/archivos-del-curso.txt).
+casualidad, está declarado en [setup/archivos-del-curso.txt](../../setup/archivos-del-curso.txt).
 
 Y fíjate en `main.jsx`, que sí se sobreescribió. Es el único archivo del frontend que cambia,
 y cambia porque **nunca lo escribiste tú**: llegó hecho en la sesión 1. Es un ensamblador,
@@ -214,7 +214,7 @@ curl -s http://localhost:8080/api/health
 
 ## 0:15 — La costura: lo que le falta a `api.js` (15 min)
 
-Abre [frontend/src/api.js](../frontend/src/api.js).
+Abre [frontend/src/api.js](../../frontend/src/api.js).
 
 Este archivo es **tuyo** desde la sesión 1 — por eso `actualizar 3` lo dejó intacto, y por eso
 hoy no te llega ningún esqueleto que llenar: le vas a **agregar** un bloque al final, debajo
@@ -288,7 +288,7 @@ Guarda. **La página ya no está en blanco.**
 
 ## 0:30 — El ensamblador del frontend (10 min)
 
-Abre [frontend/src/main.jsx](../frontend/src/main.jsx). Es corto, y no lo vas a editar hoy ni
+Abre [frontend/src/main.jsx](../../frontend/src/main.jsx). Es corto, y no lo vas a editar hoy ni
 nunca.
 
 ```javascript
@@ -337,7 +337,7 @@ Abre `http://TU-IP:3000`. Cuatro pestañas. Dos funcionan, dos son tu trabajo de
 
 ## 0:40 — El formulario que sale del contrato (40 min)
 
-Abre [frontend/src/vistas/Predecir.jsx](../frontend/src/vistas/Predecir.jsx).
+Abre [frontend/src/vistas/Predecir.jsx](../../frontend/src/vistas/Predecir.jsx).
 
 Aquí está la idea central de la sesión, y es la que más se lleva a tu reto:
 
@@ -498,7 +498,7 @@ no, el problema es CORS o la URL — no tu lógica.
 
 ## 1:20 — La Model Card, que ya viene hecha (10 min)
 
-Abre [frontend/src/vistas/ModelCard.jsx](../frontend/src/vistas/ModelCard.jsx) y la pestaña
+Abre [frontend/src/vistas/ModelCard.jsx](../../frontend/src/vistas/ModelCard.jsx) y la pestaña
 **Model Card** en el navegador, lado a lado.
 
 No hay nada que escribir aquí. El ejercicio es **leerla**, porque es la vista que más te va a

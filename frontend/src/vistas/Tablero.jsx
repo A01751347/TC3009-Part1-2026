@@ -6,6 +6,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -18,6 +20,7 @@ const SERIE_APAGADA = "#86b6ef";
 const EJE = "#c3c2b7";
 const LINEA = "#e1e0d9";
 const TINTA_APAGADA = "#898781";
+const REFERENCIA = "#b4331f";
 
 const miles = (n) => new Intl.NumberFormat("es-MX").format(n);
 
@@ -59,8 +62,16 @@ export default function Tablero() {
   const [stats, setStats] = useState(null);
   const [filas, setFilas] = useState(null);
   const [scope, setScope] = useState("");
+  const [eje, setEje] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+
+  // Cuantos registros hacen que una barra sea creible.
+  //
+  // La cubierta T tiene 5 pasajeros y una tasa del 20%. Dibujada igual que una
+  // barra de 2794 registros, invita a leer una señal donde solo hay ruido.
+  // Se atenua y se marca, en vez de esconderla: sigue siendo un dato.
+  const MINIMO_FIABLE = 30;
 
   // Cada vez que cambia el filtro, se vuelve a preguntar al backend.
   // El filtrado ocurre en el servidor, no en el navegador: el frontend no
@@ -70,7 +81,7 @@ export default function Tablero() {
     setCargando(true);
     setError(null);
 
-    Promise.all([getStats(scope), getData(scope, 20)])
+    Promise.all([getStats(scope, eje), getData(scope, 20, eje)])
       .then(([s, d]) => {
         if (cancelado) return;
         setStats(s);
@@ -82,7 +93,7 @@ export default function Tablero() {
     return () => {
       cancelado = true;
     };
-  }, [scope]);
+  }, [scope, eje]);
 
   if (error) {
     return (
@@ -102,23 +113,39 @@ export default function Tablero() {
 
   const L = stats.labels ?? {};
   const fmt = formateador(stats.value_format);
-  const grupos = stats.by_group.map((d) => String(d.group)).sort();
+  // El desplegable ofrece la etiqueta pero filtra por el valor crudo: el
+  // backend compara contra la columna, no contra como se escribe.
+  const grupos = stats.by_group.map((d) => ({
+    valor: String(d.group),
+    label: d.label ?? String(d.group),
+  }));
   const registro = L.registro ?? "registros";
   const alcance = stats.scope
     ? `${L.group ?? stats.group_by} = ${stats.scope}`
-    : `los ${miles(stats.by_group.reduce((a, d) => a + d.count, 0))} ${registro}`;
+    : `los ${miles(stats.count)} ${registro}`;
 
   const TooltipValor = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
+    // La diferencia contra la media del dataset es la lectura util: un 65% no
+    // significa nada hasta saber que el promedio es 50%.
+    const delta = stats.overall != null ? d.value - stats.overall : null;
+    const pocos = d.count < MINIMO_FIABLE;
     return (
       <div className="tooltip">
         <div className="t-titulo">{label}</div>
         <div className="t-linea">
           {L.value ?? "Valor"}: {fmt.completo(d.value)}
         </div>
+        {delta != null && (
+          <div className="t-linea">
+            {delta >= 0 ? "▲" : "▼"} {fmt.completo(Math.abs(delta))} frente a la
+            media
+          </div>
+        )}
         <div className="t-linea">
           {miles(d.count)} {registro}
+          {pocos && " — muestra pequeña, poco fiable"}
         </div>
       </div>
     );
@@ -131,9 +158,29 @@ export default function Tablero() {
         actual
       </p>
 
-      {/* Los filtros van en una sola fila, arriba de todo lo que afectan. */}
+      {/* Los filtros van en una sola fila, arriba de todo lo que afectan.
+          'Desglosar por' cambia la pregunta; 'Filtrar' acota la respuesta. */}
       <div className="filtros">
-        <label htmlFor="scope">{L.group ?? stats.group_by}</label>
+        <label htmlFor="eje">Desglosar por</label>
+        <select
+          id="eje"
+          value={stats.group_by}
+          onChange={(e) => {
+            // El scope pertenece al eje anterior: dejarlo puesto filtraria por
+            // un valor que la columna nueva no tiene, y la tabla saldria vacia
+            // sin que se entienda por que.
+            setScope("");
+            setEje(e.target.value);
+          }}
+        >
+          {(stats.groupable ?? []).map((g) => (
+            <option key={g.name} value={g.name}>
+              {g.label}
+            </option>
+          ))}
+        </select>
+
+        <label htmlFor="scope">Filtrar</label>
         <select
           id="scope"
           value={scope}
@@ -141,8 +188,8 @@ export default function Tablero() {
         >
           <option value="">Todos</option>
           {grupos.map((g) => (
-            <option key={g} value={g}>
-              {g}
+            <option key={g.valor} value={g.valor}>
+              {g.label}
             </option>
           ))}
         </select>
@@ -160,9 +207,21 @@ export default function Tablero() {
           {L.value ?? "Valor"} por {(L.group ?? stats.group_by).toLowerCase()}
         </h2>
         <p className="subtitulo">
-          {stats.by_group.length} grupos, ordenados de mayor a menor.
+          {stats.by_group.length} grupos, ordenados de mayor a menor. La línea
+          punteada es la media del conjunto ({fmt.completo(stats.overall)}).
+          {stats.by_group.some((d) => d.count < MINIMO_FIABLE) &&
+            ` Los grupos con menos de ${MINIMO_FIABLE} ${registro} van atenuados.`}
           {stats.scope && ` ${stats.scope} aparece resaltado.`}
         </p>
+        {/* Agrupar descarta las filas sin valor en esa columna. Callarlo haría
+            que las barras sumaran menos que el total sin explicación. */}
+        {stats.excluded > 0 && (
+          <p className="subtitulo">
+            {miles(stats.excluded)} {registro} no aparecen en ninguna barra:
+            les falta el dato de{" "}
+            <strong>{(L.group ?? stats.group_by).toLowerCase()}</strong>.
+          </p>
+        )}
         <ResponsiveContainer
           width="100%"
           height={Math.max(220, stats.by_group.length * 22 + 60)}
@@ -170,7 +229,7 @@ export default function Tablero() {
           <BarChart
             data={stats.by_group}
             layout="vertical"
-            margin={{ top: 4, right: 16, bottom: 4, left: 8 }}
+            margin={{ top: 4, right: 64, bottom: 4, left: 8 }}
             barCategoryGap={3}
           >
             <CartesianGrid horizontal={false} stroke={LINEA} />
@@ -183,7 +242,7 @@ export default function Tablero() {
             />
             <YAxis
               type="category"
-              dataKey="group"
+              dataKey="label"
               width={92}
               interval={0}
               stroke={EJE}
@@ -194,9 +253,26 @@ export default function Tablero() {
               content={<TooltipValor />}
               cursor={{ fill: "rgba(11,11,11,0.04)" }}
             />
+            {/* La media del conjunto, como linea.
+                Es lo que convierte "65%" en "15 puntos por encima". Sin ella
+                cada barra se lee sola y no hay comparacion posible. */}
+            {stats.overall != null && (
+              <ReferenceLine
+                x={stats.overall}
+                stroke={REFERENCIA}
+                strokeDasharray="4 3"
+                strokeWidth={1.5}
+              />
+            )}
             {/* Sin animacion de entrada: en un tablero es ruido, y ademas hace
                 que la grafica dependa del tiempo para verse completa. */}
             <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false}>
+              <LabelList
+                dataKey="count"
+                position="right"
+                formatter={(v) => `n=${miles(v)}`}
+                style={{ fill: TINTA_APAGADA, fontSize: 11 }}
+              />
               {stats.by_group.map((d) => (
                 <Cell
                   key={String(d.group)}
@@ -205,6 +281,10 @@ export default function Tablero() {
                       ? SERIE
                       : SERIE_APAGADA
                   }
+                  // Un grupo con pocos registros se dibuja translucido: la
+                  // barra sigue ahi, pero deja de competir visualmente con las
+                  // que si tienen respaldo.
+                  fillOpacity={d.count < MINIMO_FIABLE ? 0.35 : 1}
                 />
               ))}
             </Bar>
@@ -232,7 +312,7 @@ export default function Tablero() {
             >
               <CartesianGrid vertical={false} stroke={LINEA} />
               <XAxis
-                dataKey="group"
+                dataKey="label"
                 stroke={EJE}
                 tick={{ fill: TINTA_APAGADA, fontSize: 12 }}
                 tickLine={false}
@@ -247,12 +327,27 @@ export default function Tablero() {
                 content={<TooltipValor />}
                 cursor={{ fill: "rgba(11,11,11,0.04)" }}
               />
+              {stats.overall != null && (
+                <ReferenceLine
+                  y={stats.overall}
+                  stroke={REFERENCIA}
+                  strokeDasharray="4 3"
+                  strokeWidth={1.5}
+                />
+              )}
               <Bar
                 dataKey="value"
-                fill={SERIE}
                 radius={[4, 4, 0, 0]}
                 isAnimationActive={false}
-              />
+              >
+                {stats.by_secondary.map((d) => (
+                  <Cell
+                    key={String(d.group)}
+                    fill={SERIE}
+                    fillOpacity={d.count < MINIMO_FIABLE ? 0.35 : 1}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -275,8 +370,12 @@ export default function Tablero() {
               <thead>
                 <tr>
                   {filas.columns.map((c) => (
-                    <th key={c} className={c === filas.target ? undefined : "txt"}>
-                      {c}
+                    <th
+                      key={c}
+                      className={c === filas.target ? undefined : "txt"}
+                      title={c}
+                    >
+                      {filas.column_labels?.[c] ?? c}
                     </th>
                   ))}
                 </tr>

@@ -1,13 +1,16 @@
-# TC3009 · Parte 1 — De un modelo a un producto
+# Spaceship Titanic — de un modelo a un producto
 
-Módulo nivelador de la concentración de Inteligencia Artificial Avanzada y Ciencia de Datos.
+Reto de la concentración de Inteligencia Artificial Avanzada y Ciencia de Datos.
+Módulo TC3009, Parte 1.
 
-Ya sabes entrenar modelos. Este módulo trata de lo otro: qué pasa entre un notebook que
-predice bien y algo que otra persona puede usar. Cuatro sesiones de dos horas, construyendo
-en vivo.
+Un clasificador binario entrenado sobre el dataset
+[Spaceship Titanic](https://www.kaggle.com/competitions/spaceship-titanic): dado un pasajero,
+predice si fue transportado a una dimensión alternativa. Pero el reto no es el modelo — es
+**lo otro**: qué pasa entre un notebook que predice bien y algo que otra persona puede usar.
 
-Lo que te llevas no es el producto de precios de casas. Es el **template que vas a
-re-apuntar a tu reto**, que es un problema de clasificación.
+Construido sobre el template del módulo, re-apuntado de la regresión de precios de vivienda a
+este problema de clasificación. El material original del curso está archivado en
+[docs/curso/](docs/curso/).
 
 ---
 
@@ -25,53 +28,35 @@ Tu laptop **no** corre la aplicación. La escribe.
                                          (Session Manager, sin SSH)
 ```
 
-Da igual si usas Windows o Mac: el código corre en Ubuntu, igual para todos. Y no necesitas
-instalar Python, ni Node, ni Docker en tu computadora.
-
-**Vas a clonar este repositorio dos veces**, con papeles distintos:
-
-| Dónde | Para qué | Con qué |
-| ----- | -------- | ------- |
-| Tu computadora | **editar** el código | VS Code |
-| Tu instancia EC2 | **ejecutar** la aplicación | la terminal del navegador |
-
 Nunca edites archivos en la instancia: lo que escribas ahí lo borra el siguiente
-`./setup/run sync`. Y nunca intentes correr la aplicación en tu computadora: no tiene
-Python ni Node instalados, a propósito.
+`./setup/run sync`.
 
 ---
 
-## Antes de la primera sesión
+## La idea de fondo
 
-**[docs/00-setup.md](docs/00-setup.md) es tarea previa.** Son 15 minutos: git, VS Code,
-cuenta de GitHub, y hacer fork de este repositorio.
+**Nada del dominio está escrito a mano.** Ni en el backend, ni en el frontend.
 
-No instales nada más. En serio.
+```
+                    ┌──▶ el servicio VALIDA la entrada contra él
+   metadata.json ───┼──▶ el formulario se GENERA de él
+                    ├──▶ la Model Card se RENDERIZA de él
+                    └──▶ la explicación usa sus importancias
+```
 
----
+El formulario no tiene una lista de campos; la pide a `/api/model`. La tabla del tablero no
+tiene columnas; las manda `/api/data`. El título de la página no dice "Spaceship Titanic";
+lo lee de `/api/health`. Cambiar de modelo es cambiar el artefacto, no editar vistas.
 
-## Si te quedas atrás, no te quedes atrás
+Las dos piezas que lo sostienen:
 
-Pasa, y está previsto. No preguntes, no te disculpes, no intentes alcanzar tecleando más
-rápido. Salta al último checkpoint y sigue: **[la red de seguridad](#si-algo-se-rompe-la-red-de-seguridad)**
-te devuelve al estado correcto sin perder tu trabajo ni tu artefacto.
+| Pieza | Qué garantiza |
+|---|---|
+| **El contrato** — [docs/api-contrato.md](docs/api-contrato.md) | Se escribe antes que el código. Backend y frontend lo implementan; ninguno adivina |
+| **El artefacto** — `artifacts/` | Lleva TODO el conocimiento del modelo: derivación, imputación, escalado, codificación. El servicio le pasa datos crudos |
 
-> No uses `git reset --hard s2` a mano. Ese tag vive en **tu** fork y se quedó fijo en el
-> commit que existía cuando forkeaste: no se mueve aunque el curso publique correcciones.
-> `recuperar` lee del curso, así que siempre te trae la versión buena.
-
----
-
-## Las cuatro sesiones
-
-| # | Tema | Qué construyes |
-|---|------|----------------|
-| 1 | **La máquina y el contrato** | Tu instancia Ubuntu, la API en Flask, el tablero corriendo. Y CORS |
-| 2 | **La costura** | El modelo cruza la frontera: pipeline exportado, contrato, validación, paridad |
-| 3 | **El producto** | El frontend: formulario derivado del contrato, Model Card. Cero backend |
-| 4 | **Memoria y origen** | Historial, explicación, y el CSV se muda a una base de datos |
-
-La sesión 2 es la más importante del módulo. Si vas a faltar a una, que no sea esa.
+Y la prueba que las amarra: `./setup/run test paridad` comprueba que el notebook y el
+servicio devuelven **la misma clase y las mismas probabilidades** para la misma entrada.
 
 ---
 
@@ -83,27 +68,24 @@ La sesión 2 es la más importante del módulo. Si vas a faltar a una, que no se
 ./setup/run stop      # detenlos
 ./setup/run status    # qué está corriendo y en qué puerto
 ./setup/run logs      # últimas líneas de los dos registros
+./setup/run logs api  # sigue el registro de la API en vivo
 ./setup/run sync      # trae los cambios que empujaste desde tu laptop
-./setup/run actualizar 2   # trae el material para empezar la sesión 2
-./setup/run recuperar 1    # te repara: te deja como al cerrar la sesión 1
 ./setup/run url       # en qué dirección está tu tablero
 ./setup/run doctor    # revisa el entorno y dice qué falta
 ./setup/run test      # corre todas las pruebas
 ./setup/run test paridad   # solo una: notebook ↔ servicio
 ```
 
-**La consola del navegador es una sola.** Por eso `start` deja los servidores en
-segundo plano y te devuelve el prompt: con una consola alcanza para todo. Si necesitas
-ver qué está pasando, `./setup/run logs`.
-
-Y no hace falta activar el entorno virtual: el script llama a `.venv/bin/python`
-directamente.
-
-Cuando algo no cuadre, empieza por aquí:
+**Después de un `sync` que cambie `backend/requirements.txt`, instala antes de reiniciar:**
 
 ```bash
-./setup/run doctor
+bash setup/bootstrap-ec2.sh   # idempotente; no borra .venv ni node_modules
+./setup/run restart
 ```
+
+`sync` trae código, **no instala dependencias**. El artefacto lleva un `XGBClassifier`
+dentro, así que sin `xgboost` el servicio no arranca y el navegador dice
+`ERR_CONNECTION_REFUSED`. Si te pasa, `./setup/run logs api` te lo dice con todas sus letras.
 
 Verifica que la API respira:
 
@@ -118,9 +100,8 @@ curl http://localhost:8080/api/health
 **`git push` al cerrar cada sesión.** Tu código vive en una máquina que puede perderse —un
 reset del laboratorio, el presupuesto agotado—. GitHub es la única copia que sobrevive.
 
-**Detener la instancia al terminar, nunca terminarla.** Es tu entorno de trabajo de las
-cuatro sesiones. El laboratorio la reinicia sola en la siguiente clase, con una IP nueva —
-por eso nada en el código apunta a una dirección fija.
+**Detener la instancia al terminar, nunca terminarla.** El laboratorio la reinicia con una IP
+nueva — por eso nada en el código apunta a una dirección fija.
 
 ---
 
@@ -128,73 +109,79 @@ por eso nada en el código apunta a una dirección fija.
 
 ```
 backend/          la API en Flask
+  app.py            el ensamblador: descubre los módulos solo. No se edita
+  s1_tablero.py     los datos del tablero
+  s2_modelo.py      el artefacto, la validación y las predicciones
+  s4_producto.py    el historial y las explicaciones
 frontend/         el tablero en React + Vite
-notebooks/        entrenamiento y exportación del modelo (sesión 2)
-artifacts/        el modelo exportado y su contrato (sesión 2)
-data/             train.csv del dataset House Prices
-tests/            las pruebas: paridad del modelo, registro de predicciones
+  src/main.jsx      el ensamblador: descubre las vistas solas. No se edita
+  src/api.js        el cliente de la API
+  src/vistas/       una vista por archivo
+notebooks/
+  00-exploracion-y-modelado.ipynb   EDA, preparación, comparación y tuning
+  01-entrenar-y-exportar.ipynb      el pipeline completo y el artefacto
+artifacts/        el modelo exportado, su contrato y su módulo de derivadas
+data/             train.csv y test.csv de Kaggle
+tests/            paridad notebook↔servicio, e invariantes del registro
 setup/            aprovisionamiento de la instancia
-docs/             guías de sesión, contrato de API, material de apoyo
-template-clasificacion/   lo que te llevas al reto
+docs/             el contrato de la API y el material del curso
+submission.csv    el entregable de la competencia
 ```
+
+### Los dos ensambladores
+
+`backend/app.py` descubre `s[0-9]_*.py` y registra el que exponga un `bp`.
+`frontend/src/main.jsx` descubre `src/vistas/*.jsx` y monta el que exporte `default` y `meta`.
+
+Ninguno de los dos se edita. Agregar funcionalidad es agregar un archivo.
 
 ---
 
-## Documentos que vas a usar
+## El modelo
 
-| Documento | Cuándo |
-|---|---|
-| [docs/00-setup.md](docs/00-setup.md) | Antes de la sesión 1 |
-| [docs/api-contrato.md](docs/api-contrato.md) | Todo el tiempo. Es la referencia de la API |
-| [docs/s1-guia.md](docs/s1-guia.md) | Sesión 1 — la máquina y el contrato |
-| [docs/s2-guia.md](docs/s2-guia.md) | Sesión 2 — el modelo cruza la frontera |
-| [docs/s3-guia.md](docs/s3-guia.md) | Sesión 3 — el producto (frontend) |
-| [docs/s4-guia.md](docs/s4-guia.md) | Sesión 4 — memoria, palabras y un origen de verdad |
-| [docs/extras/](docs/extras/) | Opcional, para el reto |
+`XGBClassifier(n_estimators=100, max_depth=2, learning_rate=0.08, scale_pos_weight=2)`,
+elegido por `GridSearchCV` sobre 240 combinaciones con `StratifiedKFold(5)`, optimizando
+**recall**.
 
-Cada sesión empieza trayendo su material:
+| Conjunto | recall ★ | f1 | accuracy | precision | specificity | roc_auc |
+|---|---|---|---|---|---|---|
+| validación | 0.9146 | 0.8163 | 0.7999 | 0.7369 | 0.6836 | 0.8827 |
+| prueba | 0.8950 | 0.8071 | 0.7845 | 0.7350 | 0.6723 | 0.8805 |
 
-```bash
-./setup/run actualizar 3      # el número de la sesión que vas a empezar
-```
+**Recall es la métrica de decisión, no accuracy.** Un falso negativo es un pasajero
+transportado que el sistema reporta a salvo: no se despliega ninguna búsqueda. Un falso
+positivo solo moviliza recursos de más. `scale_pos_weight=2` desplaza el punto de operación a
+propósito hacia ese lado; por eso el modelo final tiene *menos* accuracy que el anterior
+(78.5% contra 80.6%) y aun así es el bueno.
 
-Llegan archivos **nuevos**; lo que ya escribiste no se toca. Quién es dueño de qué está en
-[setup/archivos-del-curso.txt](setup/archivos-del-curso.txt).
+Todo esto —incluida la matriz de confusión, la comparativa de modelos y los 22 experimentos de
+hiperparámetros— se renderiza solo en la pestaña **Model Card** del tablero, leído de
+`metadata.json`.
+
+Los detalles del pipeline y las decisiones de preparación están en
+[docs/modelo.md](docs/modelo.md).
 
 ---
 
-## Si algo se rompe: la red de seguridad
+## Re-entrenar
 
-No importa qué tan atrás vayas, qué hayas borrado, ni desde cuándo no actualizas. **Un solo
-comando te devuelve al estado correcto**, en tu computadora:
+En Colab, con `notebooks/01-entrenar-y-exportar.ipynb`:
 
-```bash
-./setup/run recuperar 2 --si     # el número de la sesión que quieres tener terminada
-git push --force
-```
-
-Y en la instancia: `./setup/run sync && ./setup/run restart`.
-
-Tres cosas que ese comando garantiza:
-
-| | |
-|---|---|
-| **No pierdes nada** | Todo lo que tenías queda en una rama `respaldo/<fecha>`. Si te arrepientes, `git reset --hard respaldo/...` y vuelves |
-| **Conservas tu artefacto** | `artifacts/` es tuyo y se restaura. No tienes que volver a correr el notebook |
-| **Se actualiza sola** | Si tu copia de `setup/` es vieja, trae la del curso y se relanza con ella |
-
-### Si ni eso funciona
-
-Si tu fork es tan viejo que `recuperar` ni existe, arráncalo con git puro — tres líneas que
-funcionan siempre, desde cualquier estado:
+1. Arrastra la carpeta `data` con el `train.csv` **crudo** de Kaggle.
+2. Corre todas las celdas. Al final se descarga `artifacts.zip`.
+3. Descomprímelo en la raíz del proyecto.
 
 ```bash
-git fetch https://github.com/vsosahdz/TC3009-Part1-2026.git main
-git checkout FETCH_HEAD -- setup/
-./setup/run recuperar 2 --si
+git add artifacts/ && git commit -m "artefacto nuevo" && git push
 ```
 
-La primera línea trae la herramienta al día; la tercera ya es la versión nueva.
+Y en la instancia: `./setup/run sync && ./setup/run restart && ./setup/run test paridad`.
+
+> El notebook necesita el CSV **crudo**, no el `train_processed.csv` del primer avance. El
+> procesado ya viene codificado (`HomePlanet_Europa`…), y esas columnas son el *resultado* del
+> preprocesamiento — que es justo lo que tiene que quedar dentro del artefacto. Un servicio
+> que pidiera `HomePlanet_Europa` le estaría pasando al usuario el trabajo del modelo. El
+> notebook lo detecta y te lo dice.
 
 ---
 
@@ -206,10 +193,28 @@ La primera línea trae la herramienta al día; la tercera ya es la versión nuev
 ```
 
 Cada vez que simplificamos algo a propósito, queda marcado y dice a dónde lleva. No son
-descuidos: son decisiones, y la Parte 2 es donde se abren.
+descuidos: son decisiones.
 
 ```bash
 grep -rn "ATAJO-P1" .
 ```
 
-Esa lista es, casi literalmente, el temario del módulo siguiente.
+---
+
+## Sobre el material del curso
+
+Este repositorio **reemplaza** los archivos del template original con la versión de este
+reto. Para que `./setup/run actualizar N` no los pise, la tabla de propiedad en
+[setup/archivos-del-curso.txt](setup/archivos-del-curso.txt) los reclama como `[TUYOS]`.
+
+Lo que se archivó sin tocar, en [docs/curso/](docs/curso/):
+
+| Archivo | Qué es |
+|---|---|
+| `api-contrato-casas.md` | El contrato original, con el modelo de precios de vivienda |
+| `s1-guia.md` … `s4-guia.md` | Las guías de las cuatro sesiones del módulo |
+| `extras/` | Material opcional (explicación con un LLM) |
+
+Lo que se reemplazó: `README.md`, `docs/api-contrato.md`, `notebooks/`, `tests/`, `data/`,
+`artifacts/`, y los módulos de `backend/` y `frontend/`. Todo recuperable con
+`git log` o desde el repositorio del curso.

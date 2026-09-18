@@ -49,22 +49,36 @@ export default function Historial() {
   if (error) return <div className="estado error">{error}</div>;
   if (!datos) return <div className="estado">Cargando...</div>;
 
-  // Que columnas del input mostrar: las tres features que mas pesan en el
-  // modelo. No estan escritas a mano, salen de metadata.json, asi que si
-  // cambias el modelo la tabla cambia sola.
+  // Qué columnas del input mostrar. No están escritas a mano: salen del
+  // contrato, así que si cambias el modelo la tabla cambia sola.
   //
-  // Si no hay contrato, se usan las primeras tres claves del primer registro:
-  // el historial guarda el input completo, asi que siempre hay algo que
-  // mostrar.
-  const importantes = Object.entries(contrato?.feature_importances ?? {})
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([k]) => k);
+  // Se ordenan por derived_importances --lo que el modelo usa DE VERDAD-- y no
+  // por feature_importances. La diferencia no es cosmética: la segunda reparte
+  // el peso de `HasSpent` entre las cinco cuentas de consumo, así que las tres
+  // primeras acaban siendo columnas de gasto que son cero en la mayoría de las
+  // filas. Una tabla de ceros no deja comparar nada; `CryoSleep` y
+  // `HomePlanet` sí.
+  //
+  // Sólo se conservan los nombres que son features del contrato: las derivadas
+  // no están en el input guardado.
+  const delInput = new Set(Object.keys(datos.rows[0]?.input ?? {}));
 
-  const columnas =
-    importantes.length > 0
-      ? importantes
-      : Object.keys(datos.rows[0]?.input ?? {}).slice(0, 3);
+  const porImportancia = (mapa) =>
+    Object.entries(mapa ?? {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([k]) => k)
+      .filter((k) => delInput.has(k));
+
+  const columnas = [
+    ...new Set([
+      ...porImportancia(contrato?.derived_importances),
+      ...porImportancia(contrato?.feature_importances),
+      ...delInput,
+    ]),
+  ].slice(0, 3);
+
+  const etiquetaDe = (nombre) =>
+    (contrato?.features ?? []).find((f) => f.name === nombre)?.label ?? nombre;
 
   return (
     <>
@@ -72,6 +86,8 @@ export default function Historial() {
         Lo que este modelo ha estado prediciendo. No es el dataset de
         entrenamiento: es el uso real del producto.
       </p>
+
+      <Resumen datos={datos} contrato={contrato} />
 
       <div className="panel">
         <h2>Predicciones recientes</h2>
@@ -93,8 +109,8 @@ export default function Historial() {
                 <tr>
                   <th className="txt">Cuándo</th>
                   {columnas.map((c) => (
-                    <th key={c} className="txt">
-                      {c}
+                    <th key={c} className="txt" title={c}>
+                      {etiquetaDe(c)}
                     </th>
                   ))}
                   <th className="txt">Predicción</th>
@@ -122,5 +138,96 @@ export default function Historial() {
         )}
       </div>
     </>
+  );
+}
+
+/** Lo que el producto ha estado prediciendo, contra lo que vio al entrenar.
+ *
+ * Es la vista que justifica que exista un historial. Un notebook puede
+ * reportar métricas sobre un conjunto de prueba; sólo un producto en uso puede
+ * contestar "¿el modelo está viendo algo distinto de lo que aprendió?".
+ *
+ * La comparación es deliberadamente humilde: con veinte predicciones no hay
+ * conclusión que sacar, y decirlo es parte de la lectura honesta.
+ */
+function Resumen({ datos, contrato }) {
+  if (!datos.rows.length) return null;
+
+  const esClasificacion = (contrato?.task ?? "regresion") === "clasificacion";
+  if (!esClasificacion || contrato?.positive_class === undefined) return null;
+
+  const positiva = contrato.positive_class;
+  const n = datos.rows.length;
+  const positivas = datos.rows.filter(
+    (f) => String(f.prediction) === String(positiva),
+  ).length;
+
+  const tasaUso = positivas / n;
+  // La tasa base del entrenamiento sale del contrato, no está escrita aquí.
+  const tasaBase = Number(
+    (contrato.class_balance ?? {})[String(positiva)] ?? NaN,
+  );
+  const hayBase = Number.isFinite(tasaBase);
+  const delta = hayBase ? tasaUso - tasaBase : null;
+
+  // Menos de 30 casos no sostienen ninguna afirmación sobre deriva.
+  const SUFICIENTE = 30;
+  const bastantes = n >= SUFICIENTE;
+
+  const etiqueta =
+    (contrato.class_labels ?? {})[String(positiva)] ?? String(positiva);
+  const pct = (v) => `${(v * 100).toFixed(1)}%`;
+
+  return (
+    <div className="panel">
+      <h2>Uso real contra entrenamiento</h2>
+      <p className="subtitulo">
+        Si el producto empieza a predecir muy distinto de lo que vio al
+        entrenar, es la primera señal de que el modelo se está quedando viejo.
+      </p>
+
+      <div className="tarjetas sin-margen">
+        <div className="tarjeta">
+          <div className="etiqueta">predicciones</div>
+          <div className="valor">{miles(n)}</div>
+        </div>
+        <div className="tarjeta">
+          <div className="etiqueta">{etiqueta} (uso real)</div>
+          <div className="valor">{pct(tasaUso)}</div>
+        </div>
+        {hayBase && (
+          <div className="tarjeta">
+            <div className="etiqueta">{etiqueta} (entrenamiento)</div>
+            <div className="valor">{pct(tasaBase)}</div>
+          </div>
+        )}
+        {delta != null && (
+          <div className="tarjeta">
+            <div className="etiqueta">diferencia</div>
+            <div className="valor">
+              {delta >= 0 ? "+" : "−"}
+              {Math.abs(delta * 100).toFixed(1)} pts
+            </div>
+          </div>
+        )}
+      </div>
+
+      <p className={bastantes ? "referencia" : "referencia tenue"}>
+        {bastantes ? (
+          <>
+            Con {miles(n)} predicciones, una diferencia de{" "}
+            <strong>{Math.abs(delta * 100).toFixed(1)} puntos</strong> ya vale
+            la pena mirar. Las causas habituales son dos: el público del
+            producto no se parece al del dataset, o el mundo cambió.
+          </>
+        ) : (
+          <>
+            Son {miles(n)} predicciones: <strong>demasiado pocas</strong> para
+            afirmar nada. Este panel empieza a significar algo a partir de{" "}
+            {SUFICIENTE}.
+          </>
+        )}
+      </p>
+    </div>
   );
 }

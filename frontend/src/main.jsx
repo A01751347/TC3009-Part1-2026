@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { getHealth } from "./api.js";
 import "./styles.css";
 
 // Ensamblador de la interfaz. NO lo edites: cambia solo cuando cambia el curso.
@@ -20,6 +21,30 @@ const vistas = Object.values(modulos)
 
 function App() {
   const [activa, setActiva] = useState(0);
+  const [salud, setSalud] = useState(null);
+
+  // El encabezado NO nombra un dataset a mano.
+  //
+  // Decia "Precios de vivienda / Ames, Iowa" mientras el servicio servia otro
+  // modelo: un tablero que miente sobre que esta mostrando. Es el mismo error
+  // que una lista de features escrita a mano, solo que en el titulo.
+  //
+  // /api/health ya sabe que dataset y que modelo hay cargados. Si falla, se
+  // usa un titulo neutro: quedarse sin encabezado seria peor.
+  useEffect(() => {
+    getHealth().then(setSalud).catch(() => setSalud(null));
+  }, []);
+
+  const titulo = salud?.dataset ?? "Tablero del modelo";
+  const subtitulo = salud
+    ? [
+        salud.task,
+        salud.model_version && `modelo ${salud.model_version}`,
+        salud.status !== "ok" && `estado: ${salud.status}`,
+      ]
+        .filter(Boolean)
+        .join(" \u00b7 ")
+    : "un modelo puesto a trabajar";
 
   if (vistas.length === 0) {
     return (
@@ -36,8 +61,8 @@ function App() {
   return (
     <div className="page">
       <header>
-        <h1>Precios de vivienda</h1>
-        <p>Ames, Iowa &middot; un modelo puesto a trabajar</p>
+        <h1>{titulo}</h1>
+        <p>{subtitulo}</p>
       </header>
 
       <nav className="pestanas">

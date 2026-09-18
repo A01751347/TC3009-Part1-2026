@@ -28,6 +28,26 @@ function formatearValor(v, formato) {
 
 const etiquetaDeClase = (c, mapa) => (mapa || {})[String(c)] ?? String(c);
 
+/** El caso "promedio" que declara el contrato: mediana o primera categoría. */
+function tipicos(contrato) {
+  const v = {};
+  for (const f of contrato.features) {
+    if (f.type === "num") v[f.name] = f.median;
+    else if (f.type === "bool") v[f.name] = "false";
+    else v[f.name] = f.allowed[0];
+  }
+  return v;
+}
+
+/** Cuántos campos se apartan del caso típico. Sirve de contexto, no de adorno:
+ *  una predicción sobre un caso idéntico a la mediana dice poco. */
+function cuantosCambiados(valores, contrato) {
+  const base = tipicos(contrato);
+  return Object.keys(base).filter(
+    (k) => String(valores[k] ?? "") !== String(base[k] ?? ""),
+  ).length;
+}
+
 export default function Predecir() {
   const [contrato, setContrato] = useState(null);
   const [valores, setValores] = useState({});
@@ -44,16 +64,30 @@ export default function Predecir() {
     getModel()
       .then((c) => {
         setContrato(c);
-        const iniciales = {};
-        for (const f of c.features) {
-          if (f.type === "num") iniciales[f.name] = f.median;
-          else if (f.type === "bool") iniciales[f.name] = "false";
-          else iniciales[f.name] = f.allowed[0];
-        }
-        setValores(iniciales);
+        setValores(tipicos(c));
       })
       .catch((e) => setError(`No se pudo leer el contrato del modelo: ${e.message}`));
   }, []);
+
+  // Un caso de partida que no es el promedio de nada.
+  //
+  // Es el mismo example.json contra el que corre la prueba de paridad, asi que
+  // es el unico caso del que se puede afirmar que el notebook y el servicio
+  // devuelven lo mismo. Ademas evita llenar trece campos a mano antes de ver
+  // un solo numero.
+  function cargarEjemplo() {
+    if (!contrato?.example) return;
+    const v = {};
+    for (const f of contrato.features) {
+      const valor = contrato.example[f.name];
+      v[f.name] = f.type === "bool" ? String(Boolean(valor)) : valor;
+    }
+    setValores(v);
+    setResultado(null);
+    setExplicacion(null);
+    setReferencia(null);
+    setError(null);
+  }
 
   // El eje de comparacion sale del contrato. Si no lo declara, no hay panel de
   // referencia: es preferible a inventar una columna que quiza no existe.
@@ -120,7 +154,11 @@ export default function Predecir() {
           <div className="campos">
             {contrato.features.map((f) => (
               <label key={f.name} className="campo">
-                <span className="etiqueta-campo">{f.name}</span>
+                {/* El nombre legible sale del contrato, no de aquí. Si no lo
+                    trae, se usa el técnico: es feo, pero nunca vacío. */}
+                <span className="etiqueta-campo" title={f.name}>
+                  {f.label ?? f.name}
+                </span>
 
                 {f.type === "cat" && (
                   <select
@@ -163,18 +201,33 @@ export default function Predecir() {
                   />
                 )}
 
-                {f.type === "num" && (
-                  <span className="ayuda-campo">
-                    entre {f.min.toLocaleString()} y {f.max.toLocaleString()}
-                  </span>
-                )}
+                <span className="ayuda-campo">
+                  {f.type === "num" &&
+                    `entre ${f.min.toLocaleString()} y ${f.max.toLocaleString()}`}
+                  {f.type === "num" && f.help && " · "}
+                  {f.help}
+                </span>
               </label>
             ))}
           </div>
 
-          <button type="submit" className="primario" disabled={enviando}>
-            {enviando ? "Consultando el modelo..." : "Predecir"}
-          </button>
+          <div className="acciones">
+            <button type="submit" className="primario" disabled={enviando}>
+              {enviando ? "Consultando el modelo..." : "Predecir"}
+            </button>
+            {contrato.example && (
+              <button type="button" onClick={cargarEjemplo}>
+                Caso de ejemplo
+              </button>
+            )}
+            <button type="button" onClick={() => setValores(tipicos(contrato))}>
+              Valores típicos
+            </button>
+          </div>
+          <p className="ayuda-campo">
+            {cuantosCambiados(valores, contrato)} de {contrato.features.length}{" "}
+            campos se apartan del caso típico.
+          </p>
         </form>
 
         <div className="panel">
@@ -208,22 +261,34 @@ export default function Predecir() {
                   al 99% son decisiones distintas, y esconder la diferencia es
                   lo que hace que la gente confie de mas en un modelo. */}
               {esClasificacion && resultado.probabilities?.length > 0 && (
-                <div className="barras">
-                  {resultado.probabilities.map((p) => (
-                    <div className="barra-fila" key={String(p.class)}>
-                      <span className="barra-etiqueta">{p.label}</span>
-                      <span className="barra-pista">
-                        <span
-                          className="barra-relleno"
-                          style={{ width: `${p.probability * 100}%` }}
-                        />
-                      </span>
-                      <span className="barra-valor">
-                        {porcentaje(p.probability)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="barras">
+                    {resultado.probabilities.map((p) => (
+                      <div className="barra-fila" key={String(p.class)}>
+                        <span className="barra-etiqueta">{p.label}</span>
+                        <span className="barra-pista">
+                          <span
+                            className={
+                              p.class === resultado.prediction
+                                ? "barra-relleno"
+                                : "barra-relleno apagada"
+                            }
+                            style={{ width: `${p.probability * 100}%` }}
+                          />
+                          {/* El umbral, dibujado.
+                              Una barra al 52% y una al 95% se ven distintas,
+                              pero sin la marca del 50% no se ve CUANTO margen
+                              hay sobre la decision. */}
+                          <span className="barra-umbral" style={{ left: "50%" }} />
+                        </span>
+                        <span className="barra-valor">
+                          {porcentaje(p.probability)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <Margen resultado={resultado} />
+                </>
               )}
 
               {resultado.warnings?.length > 0 && (
@@ -269,14 +334,25 @@ function Referencia({ referencia, resultado, contrato, esClasificacion }) {
   if (esClasificacion) {
     if (t.kind !== "categorico" || t.positive_rate === null) return null;
     const suyo = resultado.probabilities?.find(
-      (p) => p.class === t.positive_class,
+      (p) => p.class === (contrato.positive_class ?? t.positive_class),
+    );
+    // El nombre de la clase se toma del CONTRATO, no de la respuesta del
+    // tablero.
+    //
+    // Las dos hablan de lo mismo con codificaciones distintas: el tablero lee
+    // la columna del CSV --donde es un booleano-- y el contrato declara las
+    // clases como las devuelve XGBoost, 0 y 1. Buscar `true` en un
+    // class_labels con claves "0"/"1" no encuentra nada y la frase acababa
+    // diciendo "fueron true".
+    const nombreClase = etiquetaDeClase(
+      contrato.positive_class ?? t.positive_class,
+      contrato.class_labels,
     );
     return (
       <p className="referencia">
         En <strong>{referencia.scope ?? "el conjunto completo"}</strong>,{" "}
         {porcentaje(t.positive_rate)} de {numeroCorto(referencia.count)} casos
-        del entrenamiento fueron{" "}
-        {etiquetaDeClase(t.positive_class, contrato.class_labels)}
+        del entrenamiento fueron <strong>{nombreClase}</strong>
         {suyo && (
           <>
             {" "}— este caso está en <strong>{porcentaje(suyo.probability)}</strong>
@@ -301,6 +377,27 @@ function Referencia({ referencia, resultado, contrato, esClasificacion }) {
         {delta}% {resultado.prediction >= t.mean ? "arriba" : "abajo"}
       </strong>
       .
+    </p>
+  );
+}
+
+/** Cuánto margen tiene la decisión sobre el umbral, y qué significa.
+ *
+ * El modelo se entrenó con scale_pos_weight=2: está desplazado a propósito
+ * hacia el recall. Decir eso aquí, junto al número, es la diferencia entre una
+ * predicción y una predicción que se puede usar para decidir.
+ */
+function Margen({ resultado }) {
+  if (resultado.confidence == null) return null;
+  const margen = resultado.confidence - 0.5;
+  const ajustada = margen < 0.1;
+  return (
+    <p className={ajustada ? "margen ajustado" : "margen"}>
+      {ajustada ? "Decisión ajustada: " : "Decisión holgada: "}
+      <strong>{(margen * 100).toFixed(1)} puntos</strong> por encima del umbral
+      del 50%.
+      {ajustada &&
+        " Un caso así cae cerca de la frontera, donde el modelo se equivoca más."}
     </p>
   );
 }

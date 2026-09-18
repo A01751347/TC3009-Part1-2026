@@ -89,7 +89,7 @@ eso no alcanza, y qué lo reemplaza.
 
 ## 0:10 — El servicio gana memoria (40 min)
 
-Abre [backend/s4_producto.py](../backend/s4_producto.py).
+Abre [backend/s4_producto.py](../../backend/s4_producto.py).
 
 Antes de escribir nada, **lee el archivo completo**. Hay cuatro TODO, pero lo más importante
 del archivo ya está escrito, y es esto:
@@ -346,7 +346,7 @@ El backend está listo. Ahora la parte visible.
 
 ## 0:50 — El historial (15 min)
 
-Abre [frontend/src/vistas/Historial.jsx](../frontend/src/vistas/Historial.jsx).
+Abre [frontend/src/vistas/Historial.jsx](../../frontend/src/vistas/Historial.jsx).
 
 ### `TODO 5` — pedir los datos
 

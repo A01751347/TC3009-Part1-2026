@@ -30,6 +30,12 @@ Thumbs.db
 *.swp
 
 # NOTA: artifacts/ SI se versiona.
-# El pipeline.joblib y el metadata.json son parte del producto, no basura
-# generada. Sin ellos el servicio no arranca.
+# El pipeline.joblib, el metadata.json y el derivadas.py son parte del
+# producto, no basura generada. Sin ellos el servicio no arranca.
 .run/
+
+# Salidas del notebook que se regeneran solas
+artifacts.zip
+train_processed.csv
+
+# NOTA: submission.csv SI se versiona. Es el entregable de la competencia.

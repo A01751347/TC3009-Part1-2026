@@ -3,8 +3,7 @@
 Sirve agregados y registros del dataset. Este modulo NO sabe nada del modelo:
 es la vista del conjunto con el que se entreno.
 
-El contrato que implementa este archivo esta en docs/api-contrato.md y, para
-la forma generica, en docs/contrato-clasificacion.md.
+El contrato que implementa este archivo esta en docs/api-contrato.md.
 
 POR QUE HAY UNA TABLA DE CONFIGURACION ARRIBA
 ---------------------------------------------
@@ -59,6 +58,24 @@ DATASETS = {
         "class_labels": {"True": "Transportado", "False": "No transportado"},
         "group_by": "HomePlanet",
         "secondary": "Cabin_Deck",
+        # Los ejes que el tablero ofrece para desglosar.
+        #
+        # Que sean una lista y no una sola columna fija es lo que convierte el
+        # tablero en algo explorable. El hallazgo mas fuerte del dataset
+        # --CryoSleep separa 81.8% contra 32.9%-- era invisible cuando el
+        # desglose estaba escrito en el codigo.
+        #
+        # Solo columnas de baja cardinalidad: agrupar por Cabin_Num darian 1894
+        # barras de una fila cada una, que no es una grafica, es una tabla mal
+        # dibujada.
+        "agrupables": [
+            "HomePlanet",
+            "CryoSleep",
+            "Destination",
+            "Cabin_Deck",
+            "Cabin_Side",
+            "VIP",
+        ],
         "columnas": [
             "PassengerId",
             "HomePlanet",
@@ -76,6 +93,25 @@ DATASETS = {
             "value": "Tasa de transportados",
             "registro": "pasajeros",
         },
+        # Como se llama cada columna en pantalla. Lo que no este aqui se
+        # muestra con su nombre tecnico: es preferible a no ofrecerlo.
+        # Como se llama cada columna en pantalla. Cubre los ejes Y las columnas
+        # de la tabla: 'CABIN_DECK' en mayusculas no es un encabezado, es una
+        # variable de codigo que se escapo a la interfaz.
+        "nombres": {
+            "PassengerId": "Pasajero",
+            "HomePlanet": "Planeta de origen",
+            "CryoSleep": "Criosueño",
+            "Destination": "Destino",
+            "Cabin_Deck": "Cubierta",
+            "Cabin_Side": "Costado",
+            "Cabin_Num": "Número de cabina",
+            "Age": "Edad",
+            "GroupSize": "Tamaño del grupo",
+            "TotalSpent": "Gasto total",
+            "VIP": "VIP",
+            "Transported": "Transportado",
+        },
         "value_format": "porcentaje",
     },
     "casas": {
@@ -86,6 +122,7 @@ DATASETS = {
         "class_labels": {},
         "group_by": "Neighborhood",
         "secondary": "OverallQual",
+        "agrupables": ["Neighborhood", "OverallQual", "KitchenQual", "FullBath"],
         "columnas": [
             "Id",
             "GrLivArea",
@@ -104,6 +141,15 @@ DATASETS = {
             "secondary": "Calidad general",
             "value": "Precio medio",
             "registro": "casas",
+        },
+        "nombres": {
+            "Neighborhood": "Colonia",
+            "OverallQual": "Calidad general",
+            "KitchenQual": "Calidad de cocina",
+            "FullBath": "Baños completos",
+            "GrLivArea": "Superficie habitable",
+            "YearBuilt": "Año de construcción",
+            "SalePrice": "Precio de venta",
         },
         "value_format": "moneda",
     },
@@ -178,6 +224,24 @@ SECONDARY = CFG["secondary"]
 COLUMNAS = [c for c in CFG["columnas"] if c in df.columns]
 EXPUESTAS = COLUMNAS + [TARGET]
 
+# Los ejes que de verdad se pueden ofrecer: los declarados que existen en el
+# CSV y tienen una cardinalidad razonable. Se comprueba aqui y no al atender la
+# peticion para que un dataset mal declarado se note al arrancar.
+MAX_CATEGORIAS = 30
+AGRUPABLES = [
+    c
+    for c in CFG.get("agrupables", [CFG["group_by"]])
+    if c in df.columns and df[c].nunique(dropna=True) <= MAX_CATEGORIAS
+]
+if GROUP_BY not in AGRUPABLES:
+    AGRUPABLES.insert(0, GROUP_BY)
+
+NOMBRES = CFG.get("nombres", {})
+
+
+def nombre_de(columna):
+    return NOMBRES.get(columna, columna)
+
 # Los dos ejes del tablero tienen que existir DE VERDAD.
 #
 # Sin esto, un CSV que trae el target pero no las columnas del eje --por
@@ -216,6 +280,13 @@ def _nativo(v):
     return v.item() if hasattr(v, "item") else v
 
 
+def _etiqueta_de_valor(v):
+    """Como se escribe el valor de un grupo en un eje."""
+    if isinstance(v, bool):
+        return "Sí" if v else "No"
+    return str(v)
+
+
 def _valor_del_grupo(sub):
     """El numero que representa a un grupo en las graficas.
 
@@ -232,9 +303,13 @@ def _agregar_por(columna, alcance, orden_por_valor=True):
     if columna not in alcance.columns or len(alcance) == 0:
         return []
     agrupado = alcance.dropna(subset=[columna]).groupby(columna, dropna=True)
+    # 'group' conserva el tipo nativo --el frontend lo usa para comparar-- y
+    # 'label' es como se dibuja. Sin label, una columna booleana produce un eje
+    # con las etiquetas en blanco: el valor `true` no se pinta como texto.
     filas = [
         {
             "group": _nativo(clave),
+            "label": _etiqueta_de_valor(_nativo(clave)),
             "count": int(len(sub)),
             "value": _valor_del_grupo(sub),
         }
@@ -245,6 +320,11 @@ def _agregar_por(columna, alcance, orden_por_valor=True):
     else:
         filas.sort(key=lambda f: str(f["group"]))
     return filas
+
+
+def _valor_global():
+    """El valor del target sobre TODO el dataset: la linea de referencia."""
+    return _valor_del_grupo(df)
 
 
 def _resumen_del_target(alcance):
@@ -287,39 +367,77 @@ def _resumen_del_target(alcance):
 def stats():
     """Agregados del dataset. Alimenta las graficas del tablero.
 
-    Si llega 'scope', el resumen del target y el corte secundario se calculan
-    solo sobre ese grupo. El corte principal se mantiene GLOBAL a proposito:
-    es el eje de comparacion del tablero, y filtrarlo a un solo valor lo
-    dejaria sin sentido. El frontend resalta el seleccionado en lugar de
-    esconder los demas.
+    Dos parametros, y hacen cosas distintas:
+
+      by     que columna usar como eje principal. Es lo que convierte el
+             tablero en algo explorable en lugar de un reporte fijo.
+      scope  acota el resumen y el corte secundario a un valor de ese eje.
+
+    El corte principal se mantiene GLOBAL aunque haya scope: es el eje de
+    comparacion, y filtrarlo a un solo valor lo dejaria sin sentido. El
+    frontend resalta el seleccionado en lugar de esconder los demas.
 
     Es una decision de producto, no un descuido: filtrar no siempre significa
     ocultar.
     """
+    # 'by' se valida contra la lista, no se usa tal cual: sin esto, cualquiera
+    # podria agrupar por una columna con 8693 valores distintos y tumbar la
+    # respuesta, o pedir una columna que no existe y provocar un KeyError.
+    by = request.args.get("by") or GROUP_BY
+    if by not in AGRUPABLES:
+        return (
+            jsonify(
+                {
+                    "error": f"no se puede agrupar por {by!r}. "
+                    f"Valores validos: {', '.join(AGRUPABLES)}"
+                }
+            ),
+            400,
+        )
+
     # 'neighborhood' se sigue aceptando: es como se llamaba este parametro
     # cuando el unico dataset era el de casas, y romper un nombre publico del
     # contrato por cambiar de dataset seria justo lo contrario de lo que este
     # modulo enseña.
     scope = request.args.get("scope") or request.args.get("neighborhood")
-    alcance = df[df[GROUP_BY].astype(str) == scope] if scope else df
+    alcance = df[df[by].astype(str) == scope] if scope else df
 
-    # Siempre sobre df completo, nunca sobre el alcance filtrado.
-    by_group = _agregar_por(GROUP_BY, df)
+    # El corte secundario nunca repite el principal: dos graficas identicas no
+    # informan. Si coinciden, se usa el siguiente eje disponible.
+    secundario = SECONDARY
+    if secundario == by:
+        secundario = next((c for c in AGRUPABLES if c != by), None)
 
-    # Un grupo sin registros no es un error: es un resultado vacio.
     return jsonify(
         {
             "count": int(len(alcance)),
             "scope": scope,
             "dataset": CFG["nombre"],
-            "group_by": GROUP_BY,
-            "secondary_by": SECONDARY,
-            "labels": CFG["labels"],
+            "group_by": by,
+            "secondary_by": secundario,
+            # Que ejes puede ofrecer el desplegable, y como se llaman.
+            "groupable": [{"name": c, "label": nombre_de(c)} for c in AGRUPABLES],
+            "labels": {
+                **CFG["labels"],
+                "group": nombre_de(by),
+                "secondary": nombre_de(secundario) if secundario else "",
+            },
             "value_format": CFG["value_format"],
+            # La referencia del dataset completo. Sin ella, una barra al 65% no
+            # dice si eso es mucho o poco: el frontend dibuja esta linea y la
+            # pregunta se contesta sola.
+            "overall": _valor_global(),
+            # Cuantos registros no caen en NINGUNA barra porque les falta el
+            # valor del eje. Agrupar los descarta en silencio; decirlo es la
+            # diferencia entre una grafica y una grafica honesta.
+            "excluded": int(df[by].isna().sum()),
             "target": _resumen_del_target(alcance),
-            "by_group": by_group,
-            "by_secondary": _agregar_por(
-                SECONDARY, alcance, orden_por_valor=False
+            # Siempre sobre df completo, nunca sobre el alcance filtrado.
+            "by_group": _agregar_por(by, df),
+            "by_secondary": (
+                _agregar_por(secundario, alcance, orden_por_valor=False)
+                if secundario
+                else []
             ),
         }
     )
@@ -328,6 +446,9 @@ def stats():
 @bp.get("/api/data")
 def data():
     """Registros individuales, con filtro opcional por el eje principal."""
+    by = request.args.get("by") or GROUP_BY
+    if by not in AGRUPABLES:
+        by = GROUP_BY
     scope = request.args.get("scope") or request.args.get("neighborhood")
 
     # Un limit que no es un numero no tumba la peticion: se usa el de por
@@ -340,7 +461,7 @@ def data():
 
     filtrado = df
     if scope:
-        filtrado = filtrado[filtrado[GROUP_BY].astype(str) == scope]
+        filtrado = filtrado[filtrado[by].astype(str) == scope]
 
     # count es cuantas filas van en esta respuesta; total_matching cuantas
     # cumplen el filtro en total. La diferencia es la que permite paginar.
@@ -359,6 +480,7 @@ def data():
             "count": int(len(pagina)),
             "total_matching": total,
             "columns": EXPUESTAS,
+            "column_labels": {c: nombre_de(c) for c in EXPUESTAS},
             "target": TARGET,
             "rows": pagina.to_dict(orient="records"),
         }

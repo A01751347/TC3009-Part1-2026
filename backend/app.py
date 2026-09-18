@@ -11,7 +11,7 @@ sobre codigo que ya escribiste, y no hay conflictos con tu version.
     ├── app.py           esto. el ensamblador. no lo edites
     ├── s1_tablero.py    sesion 1: stats y data
     ├── s2_modelo.py     sesion 2: el modelo y las predicciones  (*)
-    └── s3_producto.py   sesion 3: historial y explicaciones     (*)
+    └── s4_producto.py   sesion 4: historial y explicaciones     (*)
 
 (*) Los modulos marcados NO existen todavia: cada uno llega al empezar su
     sesion, cuando corres

@@ -51,22 +51,63 @@ def conectar():
 #           Parte 2 -> una columna por tipo, o un motor con tipos de verdad.
 
 
+ESQUEMA = """
+    CREATE TABLE IF NOT EXISTS {tabla} (
+        prediction_id TEXT PRIMARY KEY,
+        created_at    TEXT NOT NULL,
+        model_version TEXT NOT NULL,
+        prediction    TEXT NOT NULL,
+        input_json    TEXT NOT NULL
+    )
+"""
+
+
 def crear_tabla():
     with conectar() as con:
+        con.execute(ESQUEMA.format(tabla="predicciones"))
+
+
+def migrar_si_hace_falta():
+    """Convierte la columna 'prediction' de REAL a TEXT si viene de antes.
+
+    CREATE TABLE IF NOT EXISTS no toca una tabla que ya existe, asi que una
+    base creada cuando la columna era REAL conserva esa AFINIDAD para siempre.
+    El efecto es silencioso y desagradable: al guardar json.dumps(1) --la
+    cadena "1"-- SQLite ve un numero bien formado y lo convierte a 1.0. El
+    historial devuelve 1.0 donde /api/predict devolvio 1.
+
+    Pasa en cualquier instancia que ya habia corrido el modelo anterior, que
+    es justo donde nadie lo va a buscar.
+    """
+    with conectar() as con:
+        columnas = con.execute("PRAGMA table_info(predicciones)").fetchall()
+        tipo = next(
+            (c["type"].upper() for c in columnas if c["name"] == "prediction"), None
+        )
+        if tipo is None or tipo == "TEXT":
+            return  # tabla nueva, o ya migrada
+
+        con.execute(ESQUEMA.format(tabla="predicciones_nueva"))
+        # CAST a TEXT conserva lo que habia: un precio 140637.5 se relee como
+        # 140637.5, porque _leer_prediccion acepta las dos formas.
         con.execute(
             """
-            CREATE TABLE IF NOT EXISTS predicciones (
-                prediction_id TEXT PRIMARY KEY,
-                created_at    TEXT NOT NULL,
-                model_version TEXT NOT NULL,
-                prediction    TEXT NOT NULL,
-                input_json    TEXT NOT NULL
-            )
+            INSERT OR REPLACE INTO predicciones_nueva
+            SELECT prediction_id, created_at, model_version,
+                   CAST(prediction AS TEXT), input_json
+            FROM predicciones
             """
+        )
+        con.execute("DROP TABLE predicciones")
+        con.execute("ALTER TABLE predicciones_nueva RENAME TO predicciones")
+        print(
+            f"historial migrado: la columna 'prediction' era {tipo}, ahora es TEXT",
+            flush=True,
         )
 
 
 crear_tabla()
+migrar_si_hace_falta()
 
 
 def registrar_prediccion(prediction_id, entrada, prediccion, model_version):
@@ -215,6 +256,12 @@ def redactar(entrada, prediccion):
     importancias = metadata.get("feature_importances", {})
     contrato = {f["name"]: f for f in metadata["features"]}
 
+    # La frase la lee una persona, asi que usa el nombre legible que declara el
+    # contrato. Decir "CryoSleep si" en vez de "Viaja en criosueño si" es
+    # filtrar una variable de codigo hasta la pantalla.
+    def legible(nombre):
+        return contrato.get(nombre, {}).get("label", nombre)
+
     # Se miran las OCHO que mas pesan, no las tres, y despues se filtra.
     #
     # La razon: una feature en la que este caso es igual a la mediana del
@@ -248,17 +295,21 @@ def redactar(entrada, prediccion):
             # informa, decir "por debajo de lo habitual" si.
             mediana = f["median"]
             if v > mediana:
-                distintivas.append(f"{nombre} por encima de lo habitual ({v:g})")
+                distintivas.append(
+                    f"{legible(nombre)} por encima de lo habitual ({v:g})"
+                )
             elif v < mediana:
-                distintivas.append(f"{nombre} por debajo de lo habitual ({v:g})")
+                distintivas.append(
+                    f"{legible(nombre)} por debajo de lo habitual ({v:g})"
+                )
             else:
-                tibias.append(f"{nombre} en lo habitual ({v:g})")
+                tibias.append(f"{legible(nombre)} en lo habitual ({v:g})")
         elif tipo == "bool":
             # Un booleano siempre distingue: no hay un "valor habitual" que
             # vuelva la frase vacia.
-            distintivas.append(f"{nombre} {'si' if valor else 'no'}")
+            distintivas.append(f"{legible(nombre)}: {'si' if valor else 'no'}")
         else:
-            distintivas.append(f"{nombre} = {valor}")
+            distintivas.append(f"{legible(nombre)} = {valor}")
 
     piezas = (distintivas + tibias)[:3]
 

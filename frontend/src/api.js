@@ -32,8 +32,9 @@ export const getHealth = () => get("/api/health");
 // 'scope' y no 'neighborhood': el parametro acota al valor seleccionado del
 // eje principal, sea una colonia o un planeta de origen. El backend sigue
 // aceptando el nombre viejo, pero el cliente ya no lo usa.
-export const getStats = (scope) => get("/api/stats", { scope });
-export const getData = (scope, limit = 20) => get("/api/data", { scope, limit });
+export const getStats = (scope, by) => get("/api/stats", { scope, by });
+export const getData = (scope, limit = 20, by) =>
+  get("/api/data", { scope, limit, by });
 
 // --- Sesion 3 ---
 

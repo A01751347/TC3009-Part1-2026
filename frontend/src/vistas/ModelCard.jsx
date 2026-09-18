@@ -18,12 +18,21 @@ const porOrden = (a, b) => {
 // accuracy/precision/recall/f1. Si esta vista nombrara las columnas, cambiar
 // de problema significaria editarla. En vez de eso se leen las claves que
 // vengan en metrics y se arma la tabla con ellas.
-function columnasDeMetricas(metrics) {
+function columnasDeMetricas(metrics, principal) {
   const vistas = [];
   for (const fila of Object.values(metrics || {})) {
     for (const clave of Object.keys(fila || {})) {
       if (!vistas.includes(clave)) vistas.push(clave);
     }
+  }
+  // La métrica de decisión va primero.
+  //
+  // Flask ordena las claves del JSON alfabéticamente, así que sin esto `recall`
+  // aparece en cuarta columna, entre `precision` y `roc_auc`, como si fueran
+  // todas equivalentes. No lo son: el contrato declara cuál se usó para elegir
+  // el modelo, y la tabla debería leerse en ese orden.
+  if (principal && vistas.includes(principal)) {
+    return [principal, ...vistas.filter((v) => v !== principal)];
   }
   return vistas;
 }
@@ -62,7 +71,7 @@ export default function ModelCard() {
 
   const splits = Object.entries(c.splits || {}).sort(porOrden);
   const metricas = Object.entries(c.metrics || {}).sort(porOrden);
-  const columnas = columnasDeMetricas(c.metrics);
+  const columnas = columnasDeMetricas(c.metrics, c.primary_metric);
 
   const matriz = c.confusion_matrix;
 
@@ -157,7 +166,10 @@ export default function ModelCard() {
                 <tr>
                   <th className="txt">conjunto</th>
                   {columnas.map((col) => (
-                    <th key={col}>{col}</th>
+                    <th key={col}>
+                      {col}
+                      {col === c.primary_metric ? " \u2605" : ""}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -176,7 +188,7 @@ export default function ModelCard() {
         )}
         {c.primary_metric && (
           <p className="subtitulo">
-            Métrica de decisión: <strong>{c.primary_metric}</strong>
+            ★ Métrica de decisión: <strong>{c.primary_metric}</strong>
             {c.primary_metric_why ? ` — ${c.primary_metric_why}` : ""}
           </p>
         )}
@@ -186,37 +198,7 @@ export default function ModelCard() {
           una pregunta distinta de cuanto se equivoca. Un falso negativo y un
           falso positivo casi nunca cuestan lo mismo. */}
       {esClasificacion && matriz && (
-        <div className="panel">
-          <h2>Qué tipo de error comete</h2>
-          <p className="subtitulo">
-            Rúbrica: interpreta los errores en el contexto del problema · filas
-            = valor real, columnas = predicho
-          </p>
-          <div className="scroll-x">
-            <table>
-              <thead>
-                <tr>
-                  <th className="txt">real \ predicho</th>
-                  {matriz.labels.map((l) => (
-                    <th key={String(l)}>{etiquetaDeClase(l, c.class_labels)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {matriz.matrix.map((fila, i) => (
-                  <tr key={String(matriz.labels[i])}>
-                    <td className="txt">
-                      {etiquetaDeClase(matriz.labels[i], c.class_labels)}
-                    </td>
-                    {fila.map((v, j) => (
-                      <td key={j}>{v.toLocaleString()}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <MatrizDeConfusion contrato={c} matriz={matriz} />
       )}
 
       <div className="panel">
@@ -225,7 +207,17 @@ export default function ModelCard() {
           Rúbrica: interpreta los resultados del modelo · atribuido a los campos
           del formulario
         </p>
-        <Barras datos={importancias} campo="feature_importances" />
+        <Barras
+          datos={importancias}
+          campo="feature_importances"
+          etiquetas={Object.fromEntries(
+            (c.features ?? []).map((f) => [f.name, f.label ?? f.name]),
+          )}
+        />
+        <p className="subtitulo">
+          Si una columna derivada carga con buena parte del modelo, aquí no se
+          nota: su peso se reparte. El panel de abajo lo dice sin repartir.
+        </p>
       </div>
 
       {/* La misma información sin repartir.
@@ -247,7 +239,11 @@ export default function ModelCard() {
       <div className="panel">
         <h2>Modelos comparados</h2>
         <p className="subtitulo">Rúbrica: selecciona el modelo adecuado al problema</p>
-        <TablaDeExperimentos filas={c.model_comparison} campo="model_comparison" />
+        <TablaDeExperimentos
+          filas={c.model_comparison}
+          campo="model_comparison"
+          principal={c.primary_metric}
+        />
       </div>
 
       <div className="panel">
@@ -256,10 +252,45 @@ export default function ModelCard() {
         <TablaDeExperimentos
           filas={c.hyperparameter_experiments}
           campo="hyperparameter_experiments"
+          principal={c.primary_metric}
         />
       </div>
     </>
   );
+}
+
+/** Pone las columnas en el orden en que se leen, no en el que llegan.
+ *
+ * Flask serializa los diccionarios con las claves ordenadas alfabéticamente,
+ * así que sin esto la tabla empieza por `FN, FP, accuracy…` y el nombre del
+ * modelo —lo único que identifica la fila— acaba en la última columna, fuera
+ * de la pantalla.
+ *
+ * El orden que sí se lee: qué es la fila, la métrica con la que se decidió, el
+ * resto de métricas, y al final los hiperparámetros, que son la columna más
+ * ancha y la que menos se compara de un vistazo.
+ */
+function ordenarColumnas(filas, principal) {
+  const vistas = [];
+  for (const f of filas) {
+    for (const k of Object.keys(f || {})) {
+      if (!vistas.includes(k)) vistas.push(k);
+    }
+  }
+  const primero = ["modelo", "model", "nombre", "name"];
+  const ultimo = ["hiperparametros", "hyperparameters", "params"];
+
+  const peso = (k) => {
+    if (primero.includes(k)) return 0;
+    if (k === principal) return 1;
+    if (ultimo.includes(k)) return 3;
+    return 2;
+  };
+  // Estable dentro de cada grupo: se conserva el orden en que llegaron.
+  return vistas
+    .map((k, i) => [k, i])
+    .sort((a, b) => peso(a[0]) - peso(b[0]) || a[1] - b[1])
+    .map(([k]) => k);
 }
 
 /** Una lista de objetos planos, como tabla. Las columnas salen de los datos.
@@ -268,7 +299,7 @@ export default function ModelCard() {
  * es una forma de decir "no decidi como mostrarlo": la tabla comparativa es
  * justo la evidencia que pide la rúbrica, y se lee de un vistazo.
  */
-function TablaDeExperimentos({ filas, campo }) {
+function TablaDeExperimentos({ filas, campo, principal }) {
   if (!Array.isArray(filas) || filas.length === 0) {
     return (
       <div className="vacio">
@@ -278,21 +309,17 @@ function TablaDeExperimentos({ filas, campo }) {
     );
   }
 
-  const columnas = [];
-  for (const f of filas) {
-    for (const k of Object.keys(f || {})) {
-      if (!columnas.includes(k)) columnas.push(k);
-    }
-  }
+  const columnas = ordenarColumnas(filas, principal);
 
   return (
     <div className="scroll-x">
-      <table>
+      <table className="experimentos">
         <thead>
           <tr>
             {columnas.map((col, i) => (
               <th key={col} className={i === 0 ? "txt" : undefined}>
                 {col}
+                {col === principal ? " \u2605" : ""}
               </th>
             ))}
           </tr>
@@ -316,7 +343,7 @@ function TablaDeExperimentos({ filas, campo }) {
 }
 
 /** Una lista de pares nombre/proporción, como barras. */
-function Barras({ datos, campo }) {
+function Barras({ datos, campo, etiquetas }) {
   if (datos.length === 0) {
     return (
       <div className="vacio">
@@ -331,7 +358,9 @@ function Barras({ datos, campo }) {
     <div className="barras">
       {datos.map(([nombre, valor]) => (
         <div className="barra-fila" key={nombre}>
-          <span className="barra-etiqueta">{nombre}</span>
+          <span className="barra-etiqueta" title={nombre}>
+            {(etiquetas ?? {})[nombre] ?? nombre}
+          </span>
           <span className="barra-pista">
             <span
               className="barra-relleno"
@@ -341,6 +370,99 @@ function Barras({ datos, campo }) {
           <span className="barra-valor">{(valor * 100).toFixed(1)}%</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** La matriz de confusión, leída en voz alta.
+ *
+ * Cuatro números sueltos no dicen nada. Lo que importa es cuál de los dos
+ * errores cuesta más, y ese es el argumento entero de este modelo: se eligió
+ * maximizar recall porque un falso negativo y un falso positivo no valen lo
+ * mismo. La tabla lo tiene que decir, no insinuar.
+ */
+function MatrizDeConfusion({ contrato, matriz }) {
+  const etiqueta = (k) => etiquetaDeClase(k, contrato.class_labels);
+  const positiva = contrato.positive_class;
+  const iPos = matriz.labels.findIndex((l) => l === positiva);
+
+  const total = matriz.matrix.flat().reduce((a, b) => a + b, 0);
+  const celda = (i, j) => matriz.matrix[i]?.[j] ?? 0;
+
+  // Sólo tiene sentido nombrar los cuatro cuadrantes en binario.
+  const binario = matriz.labels.length === 2 && iPos >= 0;
+  const iNeg = binario ? 1 - iPos : -1;
+  const fn = binario ? celda(iPos, iNeg) : null; // real positivo, predicho negativo
+  const fp = binario ? celda(iNeg, iPos) : null;
+
+  const rol = (i, j) => {
+    if (!binario) return "";
+    if (i === iPos && j === iPos) return "acierto";
+    if (i === iNeg && j === iNeg) return "acierto";
+    if (i === iPos && j === iNeg) return "falso negativo";
+    return "falso positivo";
+  };
+
+  return (
+    <div className="panel">
+      <h2>Qué tipo de error comete</h2>
+      <p className="subtitulo">
+        Rúbrica: interpreta los errores en el contexto del problema · filas =
+        valor real, columnas = predicho · sobre el conjunto de prueba
+      </p>
+      <div className="scroll-x">
+        <table className="matriz">
+          <thead>
+            <tr>
+              <th className="txt">real \ predicho</th>
+              {matriz.labels.map((l) => (
+                <th key={String(l)}>{etiqueta(l)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matriz.matrix.map((fila, i) => (
+              <tr key={String(matriz.labels[i])}>
+                <td className="txt">{etiqueta(matriz.labels[i])}</td>
+                {fila.map((v, j) => {
+                  const r = rol(i, j);
+                  const critico = r === "falso negativo";
+                  return (
+                    <td
+                      key={j}
+                      className={
+                        r === "acierto"
+                          ? "celda acierto"
+                          : critico
+                            ? "celda critica"
+                            : "celda error"
+                      }
+                    >
+                      <span className="celda-valor">{v.toLocaleString()}</span>
+                      <span className="celda-nota">
+                        {((v / total) * 100).toFixed(1)}%{r && ` · ${r}`}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {binario && (
+        <p className="referencia">
+          Los dos errores no cuestan lo mismo.{" "}
+          <strong>{fn.toLocaleString()} falsos negativos</strong> son casos
+          reales de <em>{etiqueta(positiva)}</em> que el sistema reporta como{" "}
+          <em>{etiqueta(matriz.labels[iNeg])}</em>: nadie actúa sobre ellos.
+          Los <strong>{fp.toLocaleString()} falsos positivos</strong> sólo
+          movilizan recursos de más.
+          {contrato.primary_metric === "recall" &&
+            " Por eso el modelo se optimizó para recall y no para accuracy: el segundo error se compra barato."}
+        </p>
+      )}
     </div>
   );
 }

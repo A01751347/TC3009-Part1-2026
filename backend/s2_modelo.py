@@ -70,6 +70,21 @@ def cargar_artefacto():
 
     contrato = json.loads(ruta_contrato.read_text())
 
+    # El caso de referencia viaja con el contrato.
+    #
+    # Sin esto, probar el modelo significa llenar trece campos a mano antes de
+    # ver un solo numero. Es el ejemplo que el notebook exporto y contra el que
+    # corre la prueba de paridad, asi que es el mismo caso del que se puede
+    # afirmar que notebook y servicio coinciden.
+    ruta_ejemplo = MODEL_DIR / "example.json"
+    if ruta_ejemplo.exists():
+        try:
+            contrato["example"] = json.loads(ruta_ejemplo.read_text())["input"]
+        except (ValueError, KeyError):
+            # Un example.json corrupto no puede impedir que el modelo cargue:
+            # el formulario sigue funcionando con las medianas del contrato.
+            print("AVISO: example.json ilegible; se omite el caso de ejemplo", flush=True)
+
     # El artefacto puede traer su propio modulo de columnas derivadas.
     #
     # joblib NO serializa el codigo de una funcion: guarda una REFERENCIA

@@ -219,7 +219,7 @@ las tres líneas y sigue.
 
 ## 0:55 — El contrato primero (10 min)
 
-Abre **[docs/api-contrato.md](api-contrato.md)** y léelo con el salón.
+Abre **[docs/api-contrato.md](api-contrato-casas.md)** y léelo con el salón.
 
 La regla del módulo:
 
